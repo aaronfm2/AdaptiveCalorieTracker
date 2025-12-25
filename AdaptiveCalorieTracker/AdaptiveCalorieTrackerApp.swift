@@ -1,18 +1,12 @@
-//
-//  AdaptiveCalorieTrackerApp.swift
-//  AdaptiveCalorieTracker
-//
-//  Created by Aaron Franklin-Martinez on 18/12/2025.
-//
-
 import SwiftUI
 import SwiftData
 
 @main
 struct AdaptiveCalorieTrackerApp: App {
+    // This sets up the database for DailyLog
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            DailyLog.self, // We tell it to use our new DailyLog model
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,8 +19,8 @@ struct AdaptiveCalorieTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainTabView()
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(for: [DailyLog.self, WeightEntry.self])
     }
 }
