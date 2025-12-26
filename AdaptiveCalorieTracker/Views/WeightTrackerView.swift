@@ -3,11 +3,11 @@ import SwiftData
 
 struct WeightTrackerView: View {
     @Environment(\.modelContext) private var modelContext
+    // Sort by date descending
     @Query(sort: \WeightEntry.date, order: .reverse) private var weights: [WeightEntry]
     
     @State private var showingAddWeight = false
     @State private var newWeight: String = ""
-    // 1. Add state to hold the selected date
     @State private var selectedDate: Date = Date()
 
     var body: some View {
@@ -15,10 +15,17 @@ struct WeightTrackerView: View {
             List {
                 ForEach(weights) { entry in
                     HStack {
-                        Text(entry.date, style: .date)
+                        VStack(alignment: .leading) {
+                            Text(entry.date, format: .dateTime.day().month().year())
+                                .font(.body)
+                            Text(entry.date, format: .dateTime.hour().minute())
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                         Spacer()
                         Text("\(entry.weight, specifier: "%.1f") kg")
                             .fontWeight(.semibold)
+                            .font(.title3)
                     }
                 }
                 .onDelete(perform: deleteWeight)
@@ -26,7 +33,9 @@ struct WeightTrackerView: View {
             .navigationTitle("Weight History")
             .toolbar {
                 Button(action: {
-                    selectedDate = Date() // Reset to today when opening
+                    // Quick Add: Defaults to NOW when opened
+                    selectedDate = Date()
+                    newWeight = ""
                     showingAddWeight = true
                 }) {
                     Image(systemName: "plus")
@@ -34,42 +43,77 @@ struct WeightTrackerView: View {
             }
             .sheet(isPresented: $showingAddWeight) {
                 VStack(spacing: 20) {
-                    Text("Add Weight").font(.headline)
+                    Text("Log Weight").font(.headline)
                     
-                    // 2. Add the DatePicker
-                    DatePicker("Date", selection: $selectedDate, displayedComponents: .date)
+                    DatePicker("Date & Time", selection: $selectedDate, displayedComponents: [.date, .hourAndMinute])
                         .datePickerStyle(.graphical)
                         .padding()
                     
-                    TextField("Enter weight (kg)", text: $newWeight)
-                        .textFieldStyle(.roundedBorder)
-                        .keyboardType(.decimalPad)
-                        .padding(.horizontal)
+                    HStack {
+                        Text("Weight (kg)")
+                        Spacer()
+                        TextField("0.0", text: $newWeight)
+                            .textFieldStyle(.roundedBorder)
+                            .keyboardType(.decimalPad)
+                            .frame(width: 100)
+                    }
+                    .padding(.horizontal)
                     
-                    Button("Save") {
-                        if let weightDouble = Double(newWeight) {
-                            // 3. Pass the selectedDate to the model
-                            let entry = WeightEntry(date: selectedDate, weight: weightDouble)
-                            modelContext.insert(entry)
-                            
-                            // Reset fields
-                            newWeight = ""
-                            showingAddWeight = false
-                        }
+                    Button("Save Entry") {
+                        saveWeight()
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(newWeight.isEmpty)
                 }
                 .padding()
-                // Adjusted detent to .large to fit the graphical calendar
                 .presentationDetents([.large])
             }
         }
     }
 
+    private func saveWeight() {
+        guard let weightDouble = Double(newWeight) else { return }
+        
+        // 1. Save to Weight History (The list you see in this tab)
+        let entry = WeightEntry(date: selectedDate, weight: weightDouble)
+        modelContext.insert(entry)
+        
+        // 2. SYNC to Daily Log (The list you see in "Logs" tab)
+        syncToDailyLog(date: selectedDate, weight: weightDouble)
+        
+        // Reset and close
+        newWeight = ""
+        showingAddWeight = false
+    }
+
+    private func syncToDailyLog(date: Date, weight: Double) {
+        // Daily Logs only care about the specific DAY (ignoring time)
+        let normalizedDate = Calendar.current.startOfDay(for: date)
+        
+        // Attempt to find an existing log for this day
+        let fetchDescriptor = FetchDescriptor<DailyLog>(
+            predicate: #Predicate { $0.date == normalizedDate }
+        )
+        
+        do {
+            if let existingLog = try modelContext.fetch(fetchDescriptor).first {
+                // If log exists (e.g., you already logged food), just update the weight
+                existingLog.weight = weight
+            } else {
+                // If no log exists for this day, create a new one with the weight
+                let newLog = DailyLog(date: normalizedDate, weight: weight)
+                modelContext.insert(newLog)
+            }
+        } catch {
+            print("Failed to sync weight to daily log: \(error)")
+        }
+    }
+
     private func deleteWeight(offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(weights[index])
+        withAnimation {
+            for index in offsets {
+                modelContext.delete(weights[index])
+            }
         }
     }
 }
