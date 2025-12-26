@@ -3,14 +3,19 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    // Sort by date descending so newest logs are at the top
     @Query(sort: \DailyLog.date, order: .reverse) private var logs: [DailyLog]
     @StateObject var healthManager = HealthManager()
     
     @AppStorage("dailyCalorieGoal") private var dailyGoal: Int = 2000
     
-    // 1. Add state variables for the input sheet
+    // Sheet State
     @State private var showingLogSheet = false
     @State private var caloriesInput = ""
+    
+    // 1. New State for Date and Input Mode
+    @State private var selectedLogDate = Date()
+    @State private var inputMode = 0 // 0 = Add, 1 = Set
 
     var body: some View {
         NavigationView {
@@ -28,17 +33,34 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) { EditButton() }
                 
-                // 2. Change the "+" button to open the sheet
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingLogSheet = true }) {
+                    Button(action: {
+                        // Reset defaults when opening the sheet
+                        selectedLogDate = Date()
+                        caloriesInput = ""
+                        inputMode = 0
+                        showingLogSheet = true
+                    }) {
                         Label("Add Calories", systemImage: "plus")
                     }
                 }
             }
-            // 3. Add the Sheet for entering calories
             .sheet(isPresented: $showingLogSheet) {
                 VStack(spacing: 20) {
-                    Text("Log Food").font(.headline)
+                    Text("Manage Calories").font(.headline)
+                    
+                    // 2. Date Picker to choose which day to modify
+                    DatePicker("Log Date", selection: $selectedLogDate, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .padding(.horizontal)
+
+                    // 3. Picker to switch between Adding or Overwriting
+                    Picker("Mode", selection: $inputMode) {
+                        Text("Add to Total").tag(0)
+                        Text("Set Total").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
                     
                     TextField("Calories (e.g. 500)", text: $caloriesInput)
                         .keyboardType(.numberPad)
@@ -46,20 +68,25 @@ struct ContentView: View {
                         .padding(.horizontal)
                         .font(.title3)
                     
+                    if inputMode == 1 {
+                        Text("Warning: This will overwrite the current total for this date.")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    
                     HStack(spacing: 20) {
                         Button("Cancel", role: .cancel) {
-                            caloriesInput = ""
                             showingLogSheet = false
                         }
                         
-                        Button("Add Calories") {
+                        Button("Save") {
                             saveCalories()
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(caloriesInput.isEmpty)
                     }
                 }
-                .presentationDetents([.height(200)]) // Keeps the sheet small
+                .presentationDetents([.medium]) // Increased height to fit new controls
                 .padding()
             }
             .onAppear(perform: setupOnAppear)
@@ -69,31 +96,34 @@ struct ContentView: View {
         }
     }
 
-    // ... (Keep your existing summaryHeader and logRow code here) ...
+    // MARK: - Logic Updates
 
-    // 4. Update the Save Logic
     private func saveCalories() {
-        guard let addedCalories = Int(caloriesInput) else { return }
+        guard let inputVal = Int(caloriesInput) else { return }
         
-        let today = Calendar.current.startOfDay(for: Date())
+        // 4. Normalize the selected date (not just Date() anymore)
+        let logDate = Calendar.current.startOfDay(for: selectedLogDate)
         
-        // Find today's log, or create one if it doesn't exist
-        if let todayLog = logs.first(where: { $0.date == today }) {
-            todayLog.caloriesConsumed += addedCalories // Adds to existing total
+        // Find the log for that specific date
+        if let existingLog = logs.first(where: { $0.date == logDate }) {
+            if inputMode == 0 {
+                // Add mode: Append to existing
+                existingLog.caloriesConsumed += inputVal
+            } else {
+                // Set mode: Overwrite completely
+                existingLog.caloriesConsumed = inputVal
+            }
         } else {
-            let newLog = DailyLog(date: today, caloriesConsumed: addedCalories)
+            // Create new log if it doesn't exist
+            let newLog = DailyLog(date: logDate, caloriesConsumed: inputVal)
             modelContext.insert(newLog)
         }
         
-        // Reset and close
-        caloriesInput = ""
         showingLogSheet = false
     }
     
-    // ... (Keep existing setupOnAppear, updateTodayBurned, and deleteItems) ...
+    // ... (Existing helper functions below remain unchanged) ...
     
-    // Remove the old 'addItem' function since 'saveCalories' handles creation now.
-    // If you need it for setupOnAppear, just make sure it creates a blank log:
     private func setupOnAppear() {
         healthManager.requestAuthorization()
         healthManager.fetchTodayCaloriesBurned()
@@ -118,7 +148,6 @@ struct ContentView: View {
         }
     }
     
-    // Helper subviews (Copy from previous response if needed)
     @ViewBuilder
     private var summaryHeader: some View {
         if let today = logs.first(where: { Calendar.current.isDateInToday($0.date) }) {
