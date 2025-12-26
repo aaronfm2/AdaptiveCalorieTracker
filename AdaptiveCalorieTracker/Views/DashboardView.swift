@@ -24,19 +24,20 @@ struct DashboardView: View {
     // 0 = Fixed Target (Logic 1), 1 = Avg Intake (Logic 2), 2 = Weight Trend (Logic 3)
     
     @State private var showingSettings = false
+    @State private var showingMaintenanceInfo = false // <--- New State for Info Button
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // 1. Progress to Target Calculation
+                    // 1. Progress to Target Calculation (UPDATED)
                     targetProgressCard
                     
-                    // 2. IMPROVED: Weight Trend Graph
-                    weightTrendCard
-                    
-                    // 3. Projection Comparison Graph
+                    // 2. Projection Comparison Graph
                     projectionComparisonCard
+                    
+                    // 3. Weight Trend Graph
+                    weightTrendCard
                     
                     // 4. Calorie Balance Graph (Last 7 Days)
                     calorieBalanceCard
@@ -51,6 +52,11 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 settingsSheet
+            }
+            .alert("About Estimated Maintenance", isPresented: $showingMaintenanceInfo) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("This is based on your weight change and your calories consumed over the last 30 days.")
             }
             .onAppear(perform: setupOnAppear)
         }
@@ -104,6 +110,23 @@ struct DashboardView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                     }
+                    
+                    // --- NEW SECTION: Estimated Maintenance ---
+                    if let estMaint = calculateEstimatedMaintenance() {
+                        Divider().padding(.vertical, 8)
+                        
+                        HStack(spacing: 6) {
+                            Text("Your estimated Maintenance calories: \(estMaint)")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            
+                            Button(action: { showingMaintenanceInfo = true }) {
+                                Image(systemName: "info.circle")
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
+                    // ------------------------------------------
                 }
             } else {
                 Text("\(goalType): \(targetWeight, specifier: "%.1f") kg")
@@ -149,13 +172,49 @@ struct DashboardView: View {
         }
     }
     
-    /// Returns the projected weight change in kg per day based on the selected method.
-    /// Positive = Gaining Weight, Negative = Losing Weight.
+    /// Calculates maintenance based on actual data: Avg Intake - (WeightChange * 7700 / Days)
+    private func calculateEstimatedMaintenance() -> Int? {
+        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        
+        // Get weights in range, sorted Oldest -> Newest
+        let recentWeights = weights.filter { $0.date >= thirtyDaysAgo }.sorted { $0.date < $1.date }
+        
+        // Need at least 2 distinct weight entries to measure change
+        guard let first = recentWeights.first, let last = recentWeights.last, first.id != last.id else {
+            return nil
+        }
+        
+        let days = Calendar.current.dateComponents([.day], from: first.date, to: last.date).day ?? 0
+        guard days > 0 else { return nil }
+        
+        // Weight Change (+ve gain, -ve loss)
+        let weightChange = last.weight - first.weight
+        
+        // Get logs strictly within this date range
+        let relevantLogs = logs.filter { $0.date >= first.date && $0.date <= last.date }
+        guard !relevantLogs.isEmpty else { return nil }
+        
+        // Calculate Average Daily Intake (only counting days user actually logged)
+        let totalConsumed = relevantLogs.reduce(0) { $0 + $1.caloriesConsumed }
+        let avgDailyIntake = Double(totalConsumed) / Double(relevantLogs.count)
+        
+        // Calculate Daily Energy Imbalance from Weight Change
+        // 1kg = 7700kcal.
+        // If weightChange is +1kg over 10 days, surplus was 7700/10 = 770/day.
+        let dailyImbalance = (weightChange * 7700.0) / Double(days)
+        
+        // Maintenance = Intake - Imbalance
+        // e.g. If Intake 2500 and Gained weight (Surplus 200), Maintenance = 2300.
+        // e.g. If Intake 2000 and Lost weight (Deficit -500), Maintenance = 2000 - (-500) = 2500.
+        let estimatedMaintenance = avgDailyIntake - dailyImbalance
+        
+        return Int(estimatedMaintenance)
+    }
+
     private func calculateKgChangePerDay(method: Int) -> Double? {
         // Method 0: Weight Trend (Last 30 Days)
         if method == 0 {
             let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
-            // weights is sorted reverse (newest first).
             let recentWeights = weights.filter { $0.date >= thirtyDaysAgo }.sorted { $0.date < $1.date }
             
             guard recentWeights.count >= 2,
@@ -177,16 +236,12 @@ struct DashboardView: View {
             if !recentLogs.isEmpty {
                 let totalConsumed = recentLogs.reduce(0) { $0 + $1.caloriesConsumed }
                 let avgConsumed = Double(totalConsumed) / Double(recentLogs.count)
-                
-                // Weight Change Formula: (In - Out) / 7700
-                // If In < Out (Deficit), result is negative (Loss)
                 return (avgConsumed - Double(maintenanceCalories)) / 7700.0
             }
         }
         
         // Method 2: Fixed Target (User Maintenance - User Target)
         if method == 2 {
-            // Weight Change Formula: (Goal - Maintenance) / 7700
             return (Double(dailyGoal) - Double(maintenanceCalories)) / 7700.0
         }
         
@@ -194,30 +249,19 @@ struct DashboardView: View {
     }
 
     private func calculateDaysRemaining(currentWeight: Double) -> Int? {
-        // Get rate for the CURRENTLY selected method
         guard let kgPerDay = calculateKgChangePerDay(method: estimationMethod) else { return nil }
         
-        // Check if we are moving in the right direction
-        // Cutting: Need kgPerDay < 0. Bulking: Need kgPerDay > 0
         if goalType == "Cutting" && kgPerDay >= 0 { return nil }
         if goalType == "Bulking" && kgPerDay <= 0 { return nil }
         
         let weightDiff = targetWeight - currentWeight
-        
-        // Days = Distance / Speed
-        // Note: weightDiff and kgPerDay should have same sign if we are moving towards goal
         let days = weightDiff / kgPerDay
         
-        if days > 0 {
-            return Int(days)
-        }
-        
+        if days > 0 { return Int(days) }
         return nil
     }
 
     // MARK: - New Projection Graph
-    
-    // Struct to hold plotting data
     private struct ProjectionPoint: Identifiable {
         let id = UUID()
         let date: Date
@@ -226,15 +270,12 @@ struct DashboardView: View {
     }
     
     private var projectionComparisonCard: some View {
-        // 1. Prepare Data
         let currentWeight = weights.first?.weight ?? 0
         let projections = generateProjections(startWeight: currentWeight)
         
-        // 2. Calculate Dynamic Scale for Y-Axis
         let allValues = projections.map { $0.weight } + [currentWeight, targetWeight]
         let minW = allValues.min() ?? 0
         let maxW = allValues.max() ?? 100
-        
         let lowerBound = max(0, minW - 1.5)
         let upperBound = maxW + 1.5
         
@@ -244,17 +285,14 @@ struct DashboardView: View {
             
             if currentWeight > 0 {
                 Chart {
-                    // Goal Line
                     RuleMark(y: .value("Target", targetWeight))
                         .foregroundStyle(.green)
                         .lineStyle(StrokeStyle(lineWidth: 2, dash: [5]))
                         .annotation(position: .topLeading, alignment: .leading) {
                             Text("Goal: \(targetWeight, specifier: "%.1f")")
-                                .font(.caption2).bold()
-                                .foregroundColor(.green)
+                                .font(.caption2).bold().foregroundColor(.green)
                         }
 
-                    // Projection Lines
                     ForEach(projections) { point in
                         LineMark(
                             x: .value("Date", point.date),
@@ -278,9 +316,7 @@ struct DashboardView: View {
             } else {
                 Text("Log weight to see projections")
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .padding().font(.caption).foregroundColor(.secondary)
             }
         }
         .padding()
@@ -290,12 +326,7 @@ struct DashboardView: View {
     private func generateProjections(startWeight: Double) -> [ProjectionPoint] {
         var points: [ProjectionPoint] = []
         let today = Date()
-        
-        let comparisonMethods = [
-            (0, "Trend (30d)"),
-            (1, "Avg Intake (7d)"),
-            (2, "Fixed Goal")
-        ]
+        let comparisonMethods = [(0, "Trend (30d)"), (1, "Avg Intake (7d)"), (2, "Fixed Goal")]
         
         for (methodId, label) in comparisonMethods {
             if let rate = calculateKgChangePerDay(method: methodId), abs(rate) > 0.001 {
@@ -312,11 +343,9 @@ struct DashboardView: View {
 
     // MARK: - Graphs
     private var weightTrendCard: some View {
-        // Dynamic Scaling for History Graph
         let allWeights = weights.map { $0.weight }
         let minW = allWeights.min() ?? 0
         let maxW = allWeights.max() ?? 100
-        // Add a small buffer (e.g. 1kg) so points aren't on the very edge
         let lowerBound = max(0, minW - 1.0)
         let upperBound = maxW + 1.0
         
@@ -325,10 +354,8 @@ struct DashboardView: View {
             
             if weights.isEmpty {
                 Text("No weight data logged yet")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
+                    .font(.caption).foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center).padding()
             } else {
                 Chart {
                     ForEach(weights.sorted(by: { $0.date < $1.date })) { entry in
@@ -338,15 +365,10 @@ struct DashboardView: View {
                         )
                         .interpolationMethod(.catmullRom)
                         .foregroundStyle(.blue)
-                        .symbol {
-                            Circle()
-                                .fill(.blue)
-                                .frame(width: 6, height: 6) // Distinct dots
-                        }
+                        .symbol { Circle().fill(.blue).frame(width: 6, height: 6) }
                     }
                 }
                 .frame(height: 180)
-                // APPLY DYNAMIC SCALE HERE
                 .chartYScale(domain: lowerBound...upperBound)
                 .chartXScale(domain: .automatic(includesZero: false))
                 .chartXAxis {
