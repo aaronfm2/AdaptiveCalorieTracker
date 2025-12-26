@@ -23,7 +23,7 @@ struct AddWorkoutView: View {
     @State private var showAddExerciseSheet = false
     
     // Predefined options
-    let categories = ["Push", "Pull", "Legs", "Upper", "Lower", "Full Body", "Cardio", "Other"]
+    let categories = ["Push", "Pull", "Legs", "Upper", "Lower", "Full Body", "Cardio", "Chest", "Arms", "Back", "Shoulders", "Abs"]
     let muscles = ["Chest", "Back", "Legs", "Shoulders", "Biceps", "Triceps", "Abs", "Cardio"]
     
     var body: some View {

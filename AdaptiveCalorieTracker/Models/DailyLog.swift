@@ -9,18 +9,24 @@ final class DailyLog {
     var caloriesBurned: Int
     var goalType: String?
     
-    // Computed property for easy graph use
+    // --- NEW: Macro Tracking (Optional) ---
+    var protein: Int? // grams
+    var carbs: Int?   // grams
+    var fat: Int?     // grams
+    // --------------------------------------
+    
     var netCalories: Int {
         return caloriesConsumed - caloriesBurned
     }
 
-    // Update init to include goalType
-    init(date: Date, weight: Double? = nil, caloriesConsumed: Int = 0, caloriesBurned: Int = 0, goalType: String? = nil) {
-        // Normalizing the date ensures all logs on "Dec 25" are treated as the same entry
+    init(date: Date, weight: Double? = nil, caloriesConsumed: Int = 0, caloriesBurned: Int = 0, goalType: String? = nil, protein: Int? = nil, carbs: Int? = nil, fat: Int? = nil) {
         self.date = Calendar.current.startOfDay(for: date)
         self.weight = weight
         self.caloriesConsumed = caloriesConsumed
         self.caloriesBurned = caloriesBurned
         self.goalType = goalType
+        self.protein = protein
+        self.carbs = carbs
+        self.fat = fat
     }
 }

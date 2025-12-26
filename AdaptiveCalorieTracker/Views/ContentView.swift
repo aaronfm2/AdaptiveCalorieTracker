@@ -3,23 +3,25 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    // Sort by date descending so newest logs are at the top
     @Query(sort: \DailyLog.date, order: .reverse) private var logs: [DailyLog]
-    @Query private var workouts: [Workout]
+    
+    // Fetch workouts to link them to logs
+    @Query(sort: \Workout.date, order: .reverse) private var workouts: [Workout]
     
     @StateObject var healthManager = HealthManager()
-    
     @AppStorage("dailyCalorieGoal") private var dailyGoal: Int = 2000
-    // Access the current goal type setting
     @AppStorage("goalType") private var currentGoalType: String = "Cutting"
     
     // Sheet State
     @State private var showingLogSheet = false
-    @State private var caloriesInput = ""
-    
-    // 1. New State for Date and Input Mode
     @State private var selectedLogDate = Date()
-    @State private var inputMode = 0 // 0 = Add, 1 = Set
+    @State private var inputMode = 0
+    
+    // Inputs
+    @State private var caloriesInput = ""
+    @State private var proteinInput = ""
+    @State private var carbsInput = ""
+    @State private var fatInput = ""
 
     var body: some View {
         NavigationView {
@@ -28,7 +30,13 @@ struct ContentView: View {
                 
                 List {
                     ForEach(logs) { log in
-                        logRow(for: log)
+                        // --- NAVIGATION LINK ---
+                        NavigationLink(destination: LogDetailView(
+                            log: log,
+                            workout: getWorkout(for: log.date)
+                        )) {
+                            logRow(for: log)
+                        }
                     }
                     .onDelete(perform: deleteItems)
                 }
@@ -39,59 +47,20 @@ struct ContentView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
-                        // Reset defaults when opening the sheet
                         selectedLogDate = Date()
                         caloriesInput = ""
+                        proteinInput = ""
+                        carbsInput = ""
+                        fatInput = ""
                         inputMode = 0
                         showingLogSheet = true
                     }) {
-                        Label("Add Calories", systemImage: "plus")
+                        Label("Add Log", systemImage: "plus")
                     }
                 }
             }
             .sheet(isPresented: $showingLogSheet) {
-                VStack(spacing: 20) {
-                    Text("Manage Calories").font(.headline)
-                    
-                    // 2. Date Picker to choose which day to modify
-                    DatePicker("Log Date", selection: $selectedLogDate, displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                        .padding(.horizontal)
-
-                    // 3. Picker to switch between Adding or Overwriting
-                    Picker("Mode", selection: $inputMode) {
-                        Text("Add to Total").tag(0)
-                        Text("Set Total").tag(1)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    
-                    TextField("Calories (e.g. 500)", text: $caloriesInput)
-                        .keyboardType(.numberPad)
-                        .textFieldStyle(.roundedBorder)
-                        .padding(.horizontal)
-                        .font(.title3)
-                    
-                    if inputMode == 1 {
-                        Text("Warning: This will overwrite the current total for this date.")
-                            .font(.caption)
-                            .foregroundColor(.red)
-                    }
-                    
-                    HStack(spacing: 20) {
-                        Button("Cancel", role: .cancel) {
-                            showingLogSheet = false
-                        }
-                        
-                        Button("Save") {
-                            saveCalories()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(caloriesInput.isEmpty)
-                    }
-                }
-                .presentationDetents([.medium])
-                .padding()
+                logSheetContent
             }
             .onAppear(perform: setupOnAppear)
             .onChange(of: healthManager.caloriesBurnedToday) { _, newValue in
@@ -100,47 +69,120 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Logic Updates
+    // MARK: - Helper Methods
+    
+    private func getWorkout(for date: Date) -> Workout? {
+        // Find workout on the same calendar day
+        workouts.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })
+    }
+    
+    private var logSheetContent: some View {
+        NavigationView {
+            Form {
+                Section("Date & Mode") {
+                    DatePicker("Log Date", selection: $selectedLogDate, displayedComponents: .date)
+                    Picker("Mode", selection: $inputMode) {
+                        Text("Add to Total").tag(0)
+                        Text("Set Total").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
+                Section("Energy") {
+                    HStack {
+                        Text("Calories")
+                        Spacer()
+                        TextField("kcal", text: $caloriesInput)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+                
+                Section("Macros (Optional)") {
+                    HStack {
+                        Text("Protein (g)")
+                        Spacer()
+                        TextField("0", text: $proteinInput)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("Carbs (g)")
+                        Spacer()
+                        TextField("0", text: $carbsInput)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("Fat (g)")
+                        Spacer()
+                        TextField("0", text: $fatInput)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+                
+                if inputMode == 1 {
+                    Section {
+                        Text("Warning: 'Set Total' overwrites existing data for this date.")
+                            .font(.caption).foregroundColor(.red)
+                    }
+                }
+            }
+            .navigationTitle("Log Details")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showingLogSheet = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { saveLog() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
 
-    private func saveCalories() {
-        guard let inputVal = Int(caloriesInput) else { return }
-        
-        // 4. Normalize the selected date
+    private func saveLog() {
         let logDate = Calendar.current.startOfDay(for: selectedLogDate)
+        let calVal = Int(caloriesInput) ?? 0
+        let pVal = Int(proteinInput)
+        let cVal = Int(carbsInput)
+        let fVal = Int(fatInput)
         
-        // Find the log for that specific date
         if let existingLog = logs.first(where: { $0.date == logDate }) {
             if inputMode == 0 {
-                // Add mode: Append to existing
-                existingLog.caloriesConsumed += inputVal
+                // Add mode: Append calories, but for macros we usually just overwrite or add if not nil
+                // Simple approach: Add calories, Overwrite macros if provided
+                existingLog.caloriesConsumed += calVal
             } else {
-                // Set mode: Overwrite completely
-                existingLog.caloriesConsumed = inputVal
+                existingLog.caloriesConsumed = calVal
             }
             
-            // --- FIX: Backfill Goal Type if missing ---
-            if existingLog.goalType == nil {
-                existingLog.goalType = currentGoalType
-            }
-            // ------------------------------------------
+            // Update macros if user typed something
+            if pVal != nil { existingLog.protein = pVal }
+            if cVal != nil { existingLog.carbs = cVal }
+            if fVal != nil { existingLog.fat = fVal }
+            
+            if existingLog.goalType == nil { existingLog.goalType = currentGoalType }
             
         } else {
-            // Create new log if it doesn't exist, INCLUDING THE GOAL TYPE
-            let newLog = DailyLog(date: logDate, caloriesConsumed: inputVal, goalType: currentGoalType)
+            let newLog = DailyLog(
+                date: logDate,
+                caloriesConsumed: calVal,
+                goalType: currentGoalType,
+                protein: pVal,
+                carbs: cVal,
+                fat: fVal
+            )
             modelContext.insert(newLog)
         }
         
         showingLogSheet = false
     }
     
-    // ... (Existing helper functions) ...
-    
     private func setupOnAppear() {
         healthManager.requestAuthorization()
         healthManager.fetchTodayCaloriesBurned()
-        
-        // Use AppStorage directly here if needed, but saveCalories handles manual adds.
-        // For auto-creation on load, we assume 'Cutting' default or whatever is in AppStorage
     }
     
     private func updateTodayBurned(_ newValue: Double) {
@@ -173,43 +215,27 @@ struct ContentView: View {
         }
     }
     
+    // Use the updated logRow from previous request
     private func logRow(for log: DailyLog) -> some View {
-        // Find workout for this day
-        let workout = workouts.first(where: { Calendar.current.isDate($0.date, inSameDayAs: log.date) })
+        let workout = getWorkout(for: log.date)
         
         return HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(log.date, style: .date).font(.body)
-                
-                // Display Weight, Goal Type, AND Workout Info
                 HStack(spacing: 4) {
                     if let w = log.weight {
                         Text("\(w, specifier: "%.1f") kg")
                     }
-                    
                     if let goal = log.goalType {
-                        Text("(\(goal))")
-                            .font(.caption2)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(4)
+                        Text("(\(goal))").font(.caption2).padding(2).background(Color.gray.opacity(0.1)).cornerRadius(4)
                     }
-                    
-                    // NEW: Show Workout Category/Muscles if available
                     if let w = workout {
-                        Text("• \(w.category): \(w.muscleGroups.joined(separator: ", "))")
-                            .font(.caption2)
-                            .foregroundColor(.blue)
-                            .lineLimit(1)
+                        Text("• \(w.category)").font(.caption2).foregroundColor(.blue)
                     }
                 }
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.caption).foregroundColor(.secondary)
             }
-            
             Spacer()
-            
             VStack(alignment: .trailing, spacing: 4) {
                 HStack(spacing: 4) {
                     Image(systemName: "fork.knife").font(.caption2)
