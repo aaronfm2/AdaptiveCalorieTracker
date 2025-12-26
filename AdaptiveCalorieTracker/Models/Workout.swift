@@ -4,7 +4,7 @@ import SwiftData
 @Model
 final class Workout {
     var id: UUID
-    @Attribute(.unique) var date: Date // Normalized to start of day
+    var date: Date // REMOVED @Attribute(.unique) to allow multiple workouts per day
     var category: String // e.g., "Push", "Pull", "Legs"
     var muscleGroups: [String] // e.g., ["Chest", "Triceps"]
     var note: String

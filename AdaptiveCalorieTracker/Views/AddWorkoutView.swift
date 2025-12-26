@@ -1,17 +1,12 @@
-//
-//  AddWorkoutView.swift
-//  AdaptiveCalorieTracker
-//
-//  Created by Aaron Franklin-Martinez on 26/12/2025.
-//
-
-
 import SwiftUI
 import SwiftData
 
 struct AddWorkoutView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    
+    // Optional workout to edit
+    var workoutToEdit: Workout?
     
     @State private var date = Date()
     @State private var category = "Push"
@@ -84,7 +79,7 @@ struct AddWorkoutView: View {
                     TextField("Workout notes...", text: $note)
                 }
             }
-            .navigationTitle("Log Workout")
+            .navigationTitle(workoutToEdit == nil ? "Log Workout" : "Edit Workout")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -97,18 +92,33 @@ struct AddWorkoutView: View {
             .sheet(isPresented: $showAddExerciseSheet) {
                 AddExerciseSheet(exercises: $tempExercises)
             }
+            .onAppear {
+                if let workout = workoutToEdit {
+                    // Populate fields if editing
+                    date = workout.date
+                    category = workout.category
+                    selectedMuscles = Set(workout.muscleGroups)
+                    note = workout.note
+                    tempExercises = workout.exercises // Note: Be careful with references here, simpler implementation for now
+                }
+            }
         }
     }
     
     func saveWorkout() {
-        let workout = Workout(date: date, category: category, muscleGroups: Array(selectedMuscles), note: note)
-        workout.exercises = tempExercises
-        
-        // Remove existing workout for this day if strictly one per day is enforced, 
-        // OR allow multiple. Logic here allows multiple but Calendar view handles them.
-        // If you want to overwrite, you'd fetch existing here first.
-        
-        modelContext.insert(workout)
+        if let workout = workoutToEdit {
+            // Update Existing
+            workout.date = Calendar.current.startOfDay(for: date)
+            workout.category = category
+            workout.muscleGroups = Array(selectedMuscles)
+            workout.note = note
+            workout.exercises = tempExercises
+        } else {
+            // Create New
+            let workout = Workout(date: date, category: category, muscleGroups: Array(selectedMuscles), note: note)
+            workout.exercises = tempExercises
+            modelContext.insert(workout)
+        }
         dismiss()
     }
 }

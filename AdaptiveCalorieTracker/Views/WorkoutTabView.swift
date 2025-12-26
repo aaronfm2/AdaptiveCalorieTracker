@@ -7,6 +7,7 @@ struct WorkoutTabView: View {
     
     @State private var showingAddWorkout = false
     @State private var showingSettings = false
+    @State private var workoutToEdit: Workout? = nil
     
     // Muscles the user cares about tracking (saved in UserDefaults)
     @AppStorage("trackedMuscles") private var trackedMusclesString: String = "Chest,Back,Legs"
@@ -17,70 +18,91 @@ struct WorkoutTabView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: 25) {
-                    // 1. Calendar View
+            List {
+                // 1. Calendar View
+                Section {
                     WorkoutCalendarView(workouts: workouts)
-                        .padding()
-                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
-                        .padding(.horizontal)
-                    
-                    // 2. Recovery Counters
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("Recovery Tracker").font(.headline)
-                            Spacer()
-                            Button("Select Muscles") { showingSettings = true }
-                                .font(.caption)
-                        }
-                        
-                        if trackedMuscles.isEmpty {
-                            Text("Select muscles to track recovery time.")
-                                .font(.caption).foregroundColor(.secondary)
-                        } else {
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 15) {
-                                ForEach(trackedMuscles, id: \.self) { muscle in
-                                    RecoveryCard(muscle: muscle, days: daysSinceLastTrained(muscle))
-                                }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+                
+                // 2. Recovery Counters
+                Section(header: Text("Recovery Tracker")) {
+                    if trackedMuscles.isEmpty {
+                        Text("Select muscles to track recovery time.")
+                            .font(.caption).foregroundColor(.secondary)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 15) {
+                            ForEach(trackedMuscles, id: \.self) { muscle in
+                                RecoveryCard(muscle: muscle, days: daysSinceLastTrained(muscle))
                             }
                         }
+                        .padding(.vertical, 5)
                     }
-                    .padding(.horizontal)
                     
-                    // 3. Recent History List
-                    VStack(alignment: .leading) {
-                        Text("Recent Workouts").font(.headline).padding(.horizontal)
-                        ForEach(workouts.prefix(5)) { workout in
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(workout.date, format: .dateTime.day().month())
-                                        .font(.subheadline).bold()
-                                    Text(workout.category)
-                                        .font(.caption).foregroundColor(.secondary)
+                    Button("Select Muscles") { showingSettings = true }
+                        .font(.caption)
+                }
+                
+                // 3. Recent Workouts (Swipeable)
+                Section(header: Text("Recent Workouts")) {
+                    if workouts.isEmpty {
+                        Text("No workouts yet. Tap + to add.")
+                            .foregroundColor(.secondary)
+                    } else {
+                        ForEach(workouts) { workout in
+                            NavigationLink(destination: WorkoutDetailView(workout: workout)) {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(workout.date, format: .dateTime.day().month())
+                                            .font(.subheadline).bold()
+                                        Text(workout.category)
+                                            .font(.caption).foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    // Badge Style from screenshot
+                                    Text(workout.muscleGroups.joined(separator: ", "))
+                                        .font(.caption)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.blue.opacity(0.1))
+                                        .cornerRadius(8)
                                 }
-                                Spacer()
-                                Text(workout.muscleGroups.joined(separator: ", "))
-                                    .font(.caption)
-                                    .padding(6)
-                                    .background(Color.blue.opacity(0.1))
-                                    .cornerRadius(8)
                             }
-                            .padding(.horizontal)
-                            Divider()
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    deleteWorkout(workout)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                
+                                Button {
+                                    workoutToEdit = workout
+                                    showingAddWorkout = true
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                .tint(.yellow)
+                            }
                         }
                     }
                 }
-                .padding(.vertical)
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Workouts")
             .toolbar {
-                Button(action: { showingAddWorkout = true }) {
+                Button(action: {
+                    workoutToEdit = nil
+                    showingAddWorkout = true
+                }) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
                 }
             }
             .sheet(isPresented: $showingAddWorkout) {
-                AddWorkoutView()
+                AddWorkoutView(workoutToEdit: workoutToEdit)
             }
             .sheet(isPresented: $showingSettings) {
                 MuscleSelectionView(selectedMusclesString: $trackedMusclesString)
@@ -88,9 +110,14 @@ struct WorkoutTabView: View {
         }
     }
     
+    private func deleteWorkout(_ workout: Workout) {
+        withAnimation {
+            modelContext.delete(workout)
+        }
+    }
+    
     // Logic to calculate days since a specific muscle was trained
     private func daysSinceLastTrained(_ muscle: String) -> Int? {
-        // Workouts are already sorted by date desc
         if let lastWorkout = workouts.first(where: { $0.muscleGroups.contains(muscle) }) {
             let components = Calendar.current.dateComponents([.day], from: lastWorkout.date, to: Calendar.current.startOfDay(for: Date()))
             return components.day
@@ -156,6 +183,9 @@ struct WorkoutCalendarView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 10) {
                 ForEach(daysInMonth, id: \.self) { date in
                     if let date = date {
+                        // Find ANY workout on this day (allows multiples)
+                        let hasWorkout = workouts.contains(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })
+                        // Just pick the first one for color if exists
                         let workout = workouts.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })
                         
                         VStack(spacing: 2) {
@@ -163,7 +193,7 @@ struct WorkoutCalendarView: View {
                                 .font(.caption2)
                             
                             // Dot indicator
-                            if let w = workout {
+                            if hasWorkout, let w = workout {
                                 Circle()
                                     .fill(categoryColor(w.category))
                                     .frame(width: 6, height: 6)
@@ -180,6 +210,8 @@ struct WorkoutCalendarView: View {
                 }
             }
         }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
     }
     
     func categoryColor(_ cat: String) -> Color {
