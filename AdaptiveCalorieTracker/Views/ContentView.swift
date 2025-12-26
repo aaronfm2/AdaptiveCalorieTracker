@@ -5,6 +5,8 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     // Sort by date descending so newest logs are at the top
     @Query(sort: \DailyLog.date, order: .reverse) private var logs: [DailyLog]
+    @Query private var workouts: [Workout]
+    
     @StateObject var healthManager = HealthManager()
     
     @AppStorage("dailyCalorieGoal") private var dailyGoal: Int = 2000
@@ -172,27 +174,42 @@ struct ContentView: View {
     }
     
     private func logRow(for log: DailyLog) -> some View {
-        HStack {
-            VStack(alignment: .leading) {
+        // Find workout for this day
+        let workout = workouts.first(where: { Calendar.current.isDate($0.date, inSameDayAs: log.date) })
+        
+        return HStack {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(log.date, style: .date).font(.body)
-                if let w = log.weight {
-                    // Display Weight AND Goal Type
-                    HStack(spacing: 4) {
+                
+                // Display Weight, Goal Type, AND Workout Info
+                HStack(spacing: 4) {
+                    if let w = log.weight {
                         Text("\(w, specifier: "%.1f") kg")
-                        if let goal = log.goalType {
-                            Text("(\(goal))")
-                                .font(.caption2)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(4)
-                        }
                     }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    
+                    if let goal = log.goalType {
+                        Text("(\(goal))")
+                            .font(.caption2)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(4)
+                    }
+                    
+                    // NEW: Show Workout Category/Muscles if available
+                    if let w = workout {
+                        Text("• \(w.category): \(w.muscleGroups.joined(separator: ", "))")
+                            .font(.caption2)
+                            .foregroundColor(.blue)
+                            .lineLimit(1)
+                    }
                 }
+                .font(.caption)
+                .foregroundColor(.secondary)
             }
+            
             Spacer()
+            
             VStack(alignment: .trailing, spacing: 4) {
                 HStack(spacing: 4) {
                     Image(systemName: "fork.knife").font(.caption2)

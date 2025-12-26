@@ -6,7 +6,9 @@ struct AdaptiveCalorieTrackerApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DailyLog.self,
-            WeightEntry.self
+            WeightEntry.self,
+            Workout.self,       // <--- Added
+            ExerciseEntry.self  // <--- Added
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -21,6 +23,6 @@ struct AdaptiveCalorieTrackerApp: App {
         WindowGroup {
             MainTabView()
         }
-        .modelContainer(sharedModelContainer) // Ensure we use the container we defined above
+        .modelContainer(sharedModelContainer)
     }
 }

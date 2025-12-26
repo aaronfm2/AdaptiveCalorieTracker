@@ -1,3 +1,11 @@
+//
+//  AddWorkoutView.swift
+//  AdaptiveCalorieTracker
+//
+//  Created by Aaron Franklin-Martinez on 26/12/2025.
+//
+
+
 import SwiftUI
 import SwiftData
 
