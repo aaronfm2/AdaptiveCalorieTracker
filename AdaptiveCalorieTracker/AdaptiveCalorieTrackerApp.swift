@@ -3,10 +3,10 @@ import SwiftData
 
 @main
 struct AdaptiveCalorieTrackerApp: App {
-    // This sets up the database for DailyLog
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            DailyLog.self, // We tell it to use our new DailyLog model
+            DailyLog.self,
+            WeightEntry.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -21,6 +21,6 @@ struct AdaptiveCalorieTrackerApp: App {
         WindowGroup {
             MainTabView()
         }
-        .modelContainer(for: [DailyLog.self, WeightEntry.self])
+        .modelContainer(sharedModelContainer) // Ensure we use the container we defined above
     }
 }

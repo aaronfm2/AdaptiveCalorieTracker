@@ -8,7 +8,7 @@ struct DashboardView: View {
     // Fetch logs for calorie data
     @Query(sort: \DailyLog.date, order: .forward) private var logs: [DailyLog]
     
-    // Fetch weights for the graph and progress (Reverse order for "Latest Weight", but we sort for Graph)
+    // Fetch weights for the graph and progress (Reverse order so first is latest)
     @Query(sort: \WeightEntry.date, order: .reverse) private var weights: [WeightEntry]
     
     @StateObject var healthManager = HealthManager()
@@ -22,7 +22,7 @@ struct DashboardView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 20) {
-                    // 1. Progress to Target Calculation
+                    // 1. Progress to Target Calculation (Updated)
                     targetProgressCard
                     
                     // 2. Weight Trend Graph
@@ -55,7 +55,6 @@ struct DashboardView: View {
                                 }
                             }
                             .frame(height: 180)
-                            // Ensure the X-axis handles dates correctly
                             .chartXScale(domain: .automatic(includesZero: false))
                         }
                     }
@@ -100,10 +99,20 @@ struct DashboardView: View {
         let avgSurplusDeficit = calculateAverageSurplusDeficit()
         
         return VStack(spacing: 12) {
-            Text("\(goalType): \(targetWeight, specifier: "%.1f") kg")
-                .font(.subheadline).foregroundColor(.secondary)
             
             if let current = currentWeight, current > 0 {
+                // --- UPDATE START: Display Current Weight ---
+                VStack(spacing: 4) {
+                    Text("Current Weight: \(current, specifier: "%.1f") kg")
+                        .font(.title3) // Slightly larger
+                        .fontWeight(.semibold)
+                    
+                    Text("Goal: \(targetWeight, specifier: "%.1f") kg (\(goalType))")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                // --- UPDATE END ---
+                
                 // Determine if the goal is reached based on goalType
                 let isGoalReached = goalType == "Cutting" ? current <= targetWeight : current >= targetWeight
                 
@@ -112,12 +121,9 @@ struct DashboardView: View {
                         .font(.title).bold()
                         .foregroundColor(.green)
                 } else {
-                    // Calculation: 1kg of body mass is roughly 7700 calories
+                    // Calculation logic...
                     let weightToChange = abs(current - targetWeight)
                     let totalCaloriesNeeded = weightToChange * 7700
-                    
-                    // For Cutting, we want a positive deficit (Rate > 0)
-                    // For Bulking, we want a negative deficit (surplus), so we flip the rate
                     let effectiveDailyRate = goalType == "Cutting" ? avgSurplusDeficit : -avgSurplusDeficit
                     
                     if effectiveDailyRate > 0 {
@@ -128,13 +134,20 @@ struct DashboardView: View {
                         Text("Days until target hit")
                             .font(.headline)
                     } else {
+                        // Spacer to separate stats from warning
+                        Divider().padding(.vertical, 5)
+                        
                         Text("Check Calories")
                             .font(.title3).bold()
                         Text(goalType == "Cutting" ? "Maintain a deficit to see estimate" : "Maintain a surplus to see estimate")
                             .font(.caption).foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
                     }
                 }
             } else {
+                Text("\(goalType): \(targetWeight, specifier: "%.1f") kg")
+                    .font(.subheadline).foregroundColor(.secondary)
+                
                 Text("No Weight Data")
                     .font(.title3).bold()
                     .foregroundColor(.secondary)
@@ -151,7 +164,6 @@ struct DashboardView: View {
     private func calculateAverageSurplusDeficit() -> Int {
         let last7Logs = logs.suffix(7)
         guard !last7Logs.isEmpty else { return 0 }
-        // Positive = Deficit (Weight Loss), Negative = Surplus (Weight Gain)
         let total = last7Logs.reduce(0) { $0 + ($1.caloriesBurned - $1.caloriesConsumed) }
         return total / last7Logs.count
     }
@@ -160,7 +172,6 @@ struct DashboardView: View {
         NavigationView {
             Form {
                 Section("Health Goals") {
-                    // Goal Type Picker
                     Picker("Goal Type", selection: $goalType) {
                         Text("Cutting (Lose Weight)").tag("Cutting")
                         Text("Bulking (Gain Weight)").tag("Bulking")
@@ -195,7 +206,6 @@ struct DashboardView: View {
         healthManager.requestAuthorization()
         healthManager.fetchTodayCaloriesBurned()
         
-        // Ensure today's log exists so Dashboard graphs update immediately
         let today = Calendar.current.startOfDay(for: Date())
         if !logs.contains(where: { $0.date == today }) {
             let newItem = DailyLog(date: today)
