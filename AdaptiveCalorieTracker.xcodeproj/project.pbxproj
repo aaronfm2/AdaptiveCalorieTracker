@@ -397,8 +397,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"AdaptiveCalorieTracker/Preview Content\"";
+				DEVELOPMENT_TEAM = 63CX6JD94M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = RepScale;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need this to track your weight.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need this to track your weight.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -428,8 +430,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"AdaptiveCalorieTracker/Preview Content\"";
+				DEVELOPMENT_TEAM = 63CX6JD94M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = RepScale;
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "We need this to track your weight.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We need this to track your weight.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
