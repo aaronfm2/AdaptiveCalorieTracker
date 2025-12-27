@@ -389,6 +389,7 @@ struct EditExerciseRow: View {
 }
 
 // MARK: - Add Exercise Sheet
+
 struct AddExerciseSheet: View {
     @Binding var exercises: [ExerciseEntry]
     var workoutMuscles: Set<String>
@@ -396,73 +397,217 @@ struct AddExerciseSheet: View {
     @Environment(\.dismiss) var dismiss
     @Query(sort: \ExerciseDefinition.name) private var libraryExercises: [ExerciseDefinition]
     
-    @State private var name = ""
-    @State private var note = ""
-    @State private var isCardio = false
+    @State private var searchText = ""
     
+    // Logic to filter exercises
+    var filteredExercises: [ExerciseDefinition] {
+        if searchText.isEmpty { return libraryExercises }
+        return libraryExercises.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+    
+    // Exercises that match the workout's target muscles
+    var recommendedExercises: [ExerciseDefinition] {
+        libraryExercises.filter { ex in
+            !Set(ex.muscleGroups).isDisjoint(with: workoutMuscles)
+        }
+    }
+    
+    // All other exercises
+    var otherExercises: [ExerciseDefinition] {
+        libraryExercises.filter { ex in
+            Set(ex.muscleGroups).isDisjoint(with: workoutMuscles)
+        }
+    }
+
     var body: some View {
         NavigationView {
-            Form {
-                Section("Details") {
-                    HStack {
-                        TextField("Exercise Name (e.g. Bench Press)", text: $name)
-                        
-                        if !libraryExercises.isEmpty {
-                            Menu {
-                                // Filter strictly by Selected Muscles
-                                let filtered = libraryExercises.filter { ex in
-                                    workoutMuscles.isEmpty || !Set(ex.muscleGroups).isDisjoint(with: workoutMuscles)
-                                }
-                                
-                                if filtered.isEmpty {
-                                    Text("No matching exercises found")
-                                } else {
-                                    ForEach(filtered) { ex in
-                                        Button(ex.name) { selectFromLibrary(ex) }
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: "book.circle")
-                                    .font(.title2)
+            List {
+                // 1. Custom Exercise Option
+                Section {
+                    NavigationLink {
+                        CustomExerciseForm(onSave: { newEx in
+                            exercises.append(newEx)
+                            dismiss()
+                        })
+                    } label: {
+                        Label("Create New Exercise", systemImage: "plus.circle.fill")
+                            .foregroundColor(.blue)
+                    }
+                }
+                
+                // 2. Search Results or Smart Categories
+                if !searchText.isEmpty {
+                    ForEach(filteredExercises) { ex in
+                        ExerciseRow(exercise: ex) { addExercise(ex) }
+                    }
+                } else {
+                    if !recommendedExercises.isEmpty {
+                        Section("Recommended (Matches Category)") {
+                            ForEach(recommendedExercises) { ex in
+                                ExerciseRow(exercise: ex) { addExercise(ex) }
                             }
                         }
                     }
                     
-                    TextField("Note (Optional)", text: $note)
+                    if !otherExercises.isEmpty {
+                        Section("Library") {
+                            ForEach(otherExercises) { ex in
+                                ExerciseRow(exercise: ex) { addExercise(ex) }
+                            }
+                        }
+                    }
                 }
             }
-            .navigationTitle("Add Exercise")
+            .navigationTitle("Select Exercise")
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search exercises...")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        saveExercise()
-                    }
-                    .disabled(name.isEmpty)
                 }
             }
         }
     }
     
-    func selectFromLibrary(_ ex: ExerciseDefinition) {
-        self.name = ex.name
-        self.isCardio = ex.isCardio
-    }
-    
-    func saveExercise() {
+    func addExercise(_ ex: ExerciseDefinition) {
         let newEx = ExerciseEntry(
-            name: name,
+            name: ex.name,
             reps: nil,
             weight: nil,
             duration: nil,
             distance: nil,
-            isCardio: isCardio,
-            note: note
+            isCardio: ex.isCardio,
+            note: ""
         )
         exercises.append(newEx)
         dismiss()
+    }
+}
+
+// MARK: - Helper Views
+
+struct ExerciseRow: View {
+    let exercise: ExerciseDefinition
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(exercise.name)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    if !exercise.muscleGroups.isEmpty {
+                        Text(exercise.muscleGroups.joined(separator: ", "))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                Spacer()
+                
+                // Visual Indicator
+                if exercise.isCardio {
+                    Image(systemName: "heart.fill")
+                        .foregroundColor(.red)
+                        .font(.caption)
+                        .padding(6)
+                        .background(Color.red.opacity(0.1))
+                        .clipShape(Circle())
+                } else {
+                    Image(systemName: "dumbbell.fill")
+                        .foregroundColor(.blue)
+                        .font(.caption)
+                        .padding(6)
+                        .background(Color.blue.opacity(0.1))
+                        .clipShape(Circle())
+                }
+            }
+            .contentShape(Rectangle()) // Ensures the whole row is tappable
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct CustomExerciseForm: View {
+    @Environment(\.modelContext) private var modelContext
+    var onSave: (ExerciseEntry) -> Void
+    
+    @State private var name = ""
+    @State private var isCardio = false
+    @State private var note = ""
+    
+    // Library Saving State
+    @State private var saveToLibrary = false
+    @State private var selectedMuscles: Set<String> = []
+    
+    var body: some View {
+        Form {
+            Section("New Exercise Details") {
+                TextField("Name (e.g. Burpees)", text: $name)
+                Toggle("Cardio Exercise?", isOn: $isCardio)
+                TextField("Default Note (Optional)", text: $note)
+            }
+            
+            Section {
+                Toggle("Save to Exercise Library", isOn: $saveToLibrary)
+            } footer: {
+                Text("Save this exercise to your library for future use.")
+            }
+            
+            // Conditional Section: Only show if saving to library
+            if saveToLibrary {
+                Section("Target Muscles (Required)") {
+                    ForEach(MuscleGroup.allCases, id: \.self) { muscle in
+                        HStack {
+                            Text(muscle.rawValue)
+                            Spacer()
+                            if selectedMuscles.contains(muscle.rawValue) {
+                                Image(systemName: "checkmark").foregroundColor(.blue)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if selectedMuscles.contains(muscle.rawValue) {
+                                selectedMuscles.remove(muscle.rawValue)
+                            } else {
+                                selectedMuscles.insert(muscle.rawValue)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            Button("Add to Workout") {
+                saveAndFinish()
+            }
+            .disabled(isInvalid)
+        }
+        .navigationTitle("Custom Exercise")
+    }
+    
+    var isInvalid: Bool {
+        if name.isEmpty { return true }
+        if saveToLibrary && selectedMuscles.isEmpty { return true }
+        return false
+    }
+    
+    func saveAndFinish() {
+        // 1. Save to Library if requested
+        if saveToLibrary {
+            let newDef = ExerciseDefinition(
+                name: name,
+                muscleGroups: Array(selectedMuscles),
+                isCardio: isCardio
+            )
+            modelContext.insert(newDef)
+        }
+        
+        // 2. Add to current workout
+        let newEx = ExerciseEntry(
+            name: name,
+            isCardio: isCardio,
+            note: note
+        )
+        onSave(newEx)
     }
 }
 
