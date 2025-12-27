@@ -5,7 +5,6 @@ import SwiftData
 struct AdaptiveCalorieTrackerApp: App {
     @StateObject private var healthManager = HealthManager()
     
-    // Tracks if onboarding is finished
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     
     var sharedModelContainer: ModelContainer = {
@@ -21,7 +20,16 @@ struct AdaptiveCalorieTrackerApp: App {
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            
+            // --- NEW: Call the Seeder here ---
+            // We must run this on the MainActor
+            Task { @MainActor in
+                DefaultExercises.seed(context: container.mainContext)
+            }
+            // --------------------------------
+            
+            return container
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }

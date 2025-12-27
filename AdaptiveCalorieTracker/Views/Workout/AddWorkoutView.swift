@@ -67,8 +67,8 @@ struct AddWorkoutView: View {
             }
             // Sheets & Alerts
             .sheet(isPresented: $viewModel.showAddExerciseSheet) {
-                // Fix: Convert Set<MuscleGroup> -> Set<String> for the subview
-                let muscleStrings = Set(viewModel.selectedMuscles.map { $0 })
+                // Pass selected muscles to the sheet for filtering
+                let muscleStrings = Set(viewModel.selectedMuscles)
                 AddExerciseSheet(exercises: $viewModel.exercises, workoutMuscles: muscleStrings)
             }
             .sheet(isPresented: $viewModel.showLoadTemplateSheet) {
@@ -87,7 +87,7 @@ struct AddWorkoutView: View {
     }
 }
 
-// MARK: - Sub-View Extensions to Fix Compiler Timeouts
+// MARK: - Sub-View Extensions
 extension AddWorkoutView {
     
     // 1. Session Details Section
@@ -123,7 +123,7 @@ extension AddWorkoutView {
         }
     }
     
-    // 2. Exercises List Section (Complex Logic)
+    // 2. Exercises List Section
     @ViewBuilder
     private var exercisesSection: some View {
         if viewModel.exercises.isEmpty {
@@ -288,25 +288,21 @@ struct AddExerciseSheet: View {
                         
                         if !libraryExercises.isEmpty {
                             Menu {
-                                let recommended = libraryExercises.filter { !Set($0.muscleGroups).isDisjoint(with: workoutMuscles) }
-                                let others = libraryExercises.filter { Set($0.muscleGroups).isDisjoint(with: workoutMuscles) }
-                                
-                                if !recommended.isEmpty {
-                                    Section("Recommended") {
-                                        ForEach(recommended) { ex in
-                                            Button(ex.name) { selectFromLibrary(ex) }
-                                        }
-                                    }
+                                // --- UPDATED LOGIC: Filter Strictly by Selected Muscles ---
+                                let filtered = libraryExercises.filter { ex in
+                                    // If no muscles are selected (unlikely but possible), show all.
+                                    // Otherwise, strictly show only exercises that overlap with workout muscles.
+                                    workoutMuscles.isEmpty || !Set(ex.muscleGroups).isDisjoint(with: workoutMuscles)
                                 }
                                 
-                                if !others.isEmpty {
-                                    Section("All Exercises") {
-                                        ForEach(others) { ex in
-                                            Button(ex.name) { selectFromLibrary(ex) }
-                                        }
+                                if filtered.isEmpty {
+                                    Text("No matching exercises found")
+                                } else {
+                                    ForEach(filtered) { ex in
+                                        Button(ex.name) { selectFromLibrary(ex) }
                                     }
                                 }
-                                
+                                // -----------------------------------------------------------
                             } label: {
                                 Image(systemName: "book.circle")
                                     .font(.title2)
