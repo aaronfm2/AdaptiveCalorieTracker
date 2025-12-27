@@ -5,10 +5,8 @@ struct AddWorkoutView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
-    // Fetch available templates
     @Query(sort: \WorkoutTemplate.name) private var templates: [WorkoutTemplate]
     
-    // Optional workout to edit
     var workoutToEdit: Workout?
     
     @State private var date = Date()
@@ -16,16 +14,13 @@ struct AddWorkoutView: View {
     @State private var selectedMuscles: Set<String> = []
     @State private var note = ""
     
-    // Temporary storage for exercises being added
     @State private var tempExercises: [ExerciseEntry] = []
     @State private var showAddExerciseSheet = false
     
-    // Template States
     @State private var showLoadTemplateSheet = false
     @State private var showSaveTemplateAlert = false
     @State private var newTemplateName = ""
     
-    // Predefined options
     let categories = ["Push", "Pull", "Legs", "Upper", "Lower", "Full Body", "Cardio", "Chest", "Arms", "Back", "Shoulders", "Abs"]
     let muscles = ["Chest", "Back", "Legs", "Shoulders", "Biceps", "Triceps", "Abs", "Cardio"]
     
@@ -41,7 +36,6 @@ struct AddWorkoutView: View {
                         }
                     }
                     
-                    // Muscle Multi-Select
                     DisclosureGroup("Muscles Trained (\(selectedMuscles.count))") {
                         ForEach(muscles, id: \.self) { muscle in
                             HStack {
@@ -72,8 +66,23 @@ struct AddWorkoutView: View {
                         ForEach(Array(tempExercises.enumerated()), id: \.offset) { index, ex in
                             VStack(alignment: .leading) {
                                 Text(ex.name).font(.headline)
-                                Text("\(ex.reps) reps @ \(ex.weight, specifier: "%.1f") kg")
-                                    .font(.subheadline).foregroundColor(.secondary)
+                                
+                                // --- Display Logic for List ---
+                                if ex.isCardio {
+                                    HStack(spacing: 8) {
+                                        if let dist = ex.distance, dist > 0 {
+                                            Label("\(dist, specifier: "%.2f") km", systemImage: "location.fill")
+                                        }
+                                        if let time = ex.duration, time > 0 {
+                                            Label("\(Int(time)) min", systemImage: "clock.fill")
+                                        }
+                                    }
+                                    .font(.subheadline).foregroundColor(.blue)
+                                } else {
+                                    Text("\(ex.reps ?? 0) reps @ \(ex.weight ?? 0.0, specifier: "%.1f") kg")
+                                        .font(.subheadline).foregroundColor(.secondary)
+                                }
+                                
                                 if !ex.note.isEmpty {
                                     Text(ex.note).font(.caption).italic()
                                 }
@@ -118,7 +127,6 @@ struct AddWorkoutView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
-                        // Template Menu
                         Menu {
                             Button {
                                 showLoadTemplateSheet = true
@@ -160,23 +168,28 @@ struct AddWorkoutView: View {
             }
             .onAppear {
                 if let workout = workoutToEdit {
-                    // Populate fields if editing
                     date = workout.date
                     category = workout.category
                     selectedMuscles = Set(workout.muscleGroups)
                     note = workout.note
-                    // We copy the exercises so we can edit them freely
-                    // In a real app, you might want deep copies
                     tempExercises = workout.exercises
                 }
             }
         }
     }
     
-    // MARK: - Helper Functions
+    // MARK: - Logic
     
     func duplicateExercise(_ ex: ExerciseEntry) {
-        let newEx = ExerciseEntry(name: ex.name, reps: ex.reps, weight: ex.weight, note: ex.note)
+        let newEx = ExerciseEntry(
+            name: ex.name,
+            reps: ex.reps,
+            weight: ex.weight,
+            duration: ex.duration,
+            distance: ex.distance,
+            isCardio: ex.isCardio,
+            note: ex.note
+        )
         tempExercises.append(newEx)
     }
     
@@ -184,40 +197,48 @@ struct AddWorkoutView: View {
         guard !newTemplateName.isEmpty else { return }
         let template = WorkoutTemplate(name: newTemplateName, category: category, muscleGroups: Array(selectedMuscles))
         
-        // Map current exercises to template exercises
         let templateExercises = tempExercises.map { ex in
-            TemplateExerciseEntry(name: ex.name, reps: ex.reps, weight: ex.weight, note: ex.note)
+            TemplateExerciseEntry(
+                name: ex.name,
+                reps: ex.reps,
+                weight: ex.weight,
+                duration: ex.duration,
+                distance: ex.distance,
+                isCardio: ex.isCardio,
+                note: ex.note
+            )
         }
         template.exercises = templateExercises
-        
         modelContext.insert(template)
     }
     
     func loadTemplate(_ template: WorkoutTemplate) {
-        // Update Metadata
         category = template.category
         selectedMuscles = Set(template.muscleGroups)
         
-        // Convert Template Exercises to Actual Exercises
-        // We Append them (or should we replace? Appending is safer)
         let newExercises = template.exercises.map { tex in
-            ExerciseEntry(name: tex.name, reps: tex.reps, weight: tex.weight, note: tex.note)
+            ExerciseEntry(
+                name: tex.name,
+                reps: tex.reps,
+                weight: tex.weight,
+                duration: tex.duration,
+                distance: tex.distance,
+                isCardio: tex.isCardio,
+                note: tex.note
+            )
         }
         tempExercises.append(contentsOf: newExercises)
-        
         showLoadTemplateSheet = false
     }
     
     func saveWorkout() {
         if let workout = workoutToEdit {
-            // Update Existing
             workout.date = Calendar.current.startOfDay(for: date)
             workout.category = category
             workout.muscleGroups = Array(selectedMuscles)
             workout.note = note
             workout.exercises = tempExercises
         } else {
-            // Create New
             let workout = Workout(date: date, category: category, muscleGroups: Array(selectedMuscles), note: note)
             workout.exercises = tempExercises
             modelContext.insert(workout)
@@ -226,34 +247,70 @@ struct AddWorkoutView: View {
     }
 }
 
-// MARK: - Subviews
+// MARK: - Add Exercise Sheet (Updated for Cardio)
 
 struct AddExerciseSheet: View {
     @Binding var exercises: [ExerciseEntry]
     @Environment(\.dismiss) var dismiss
     
     @State private var name = ""
+    @State private var note = ""
+    
+    // Type Toggle
+    @State private var exerciseType: ExerciseType = .strength
+    
+    // Strength Inputs
     @State private var reps = ""
     @State private var weight = ""
-    @State private var note = ""
-    @State private var setCount = 1 // New: Add multiple sets at once
+    
+    // Cardio Inputs
+    @State private var duration = ""
+    @State private var distance = ""
+    
+    @State private var setCount = 1
+    
+    enum ExerciseType: String, CaseIterable {
+        case strength = "Strength"
+        case cardio = "Cardio"
+    }
     
     var body: some View {
         NavigationView {
             Form {
                 Section("Details") {
-                    TextField("Exercise Name (e.g. Bench Press)", text: $name)
+                    TextField("Exercise Name (e.g. Run or Bench Press)", text: $name)
                     
-                    HStack {
-                        Text("Reps")
-                        Spacer()
-                        TextField("0", text: $reps).keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                    Picker("Type", selection: $exerciseType) {
+                        ForEach(ExerciseType.allCases, id: \.self) { type in
+                            Text(type.rawValue).tag(type)
+                        }
                     }
+                    .pickerStyle(.segmented)
                     
-                    HStack {
-                        Text("Weight (kg)")
-                        Spacer()
-                        TextField("0.0", text: $weight).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                    if exerciseType == .strength {
+                        HStack {
+                            Text("Reps")
+                            Spacer()
+                            TextField("0", text: $reps).keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                        }
+                        
+                        HStack {
+                            Text("Weight (kg)")
+                            Spacer()
+                            TextField("0.0", text: $weight).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                        }
+                    } else {
+                        HStack {
+                            Text("Duration (min)")
+                            Spacer()
+                            TextField("0", text: $duration).keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                        }
+                        
+                        HStack {
+                            Text("Distance (km)")
+                            Spacer()
+                            TextField("0.0", text: $distance).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                        }
                     }
                     
                     TextField("Note (Optional)", text: $note)
@@ -269,7 +326,7 @@ struct AddExerciseSheet: View {
                 } header: {
                     Text("Quick Add")
                 } footer: {
-                    Text("Adds \(setCount) entries with the same weight and reps.")
+                    Text("Adds multiple entries at once.")
                 }
             }
             .navigationTitle("Add Exercise")
@@ -279,26 +336,46 @@ struct AddExerciseSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        if let r = Int(reps), let w = Double(weight), !name.isEmpty {
-                            for _ in 0..<setCount {
-                                let newEx = ExerciseEntry(name: name, reps: r, weight: w, note: note)
-                                exercises.append(newEx)
-                            }
-                            dismiss()
-                        }
+                        saveExercises()
                     }
-                    .disabled(name.isEmpty || reps.isEmpty || weight.isEmpty)
+                    .disabled(name.isEmpty)
                 }
             }
         }
     }
+    
+    func saveExercises() {
+        let isCardio = (exerciseType == .cardio)
+        let rVal = Int(reps)
+        let wVal = Double(weight)
+        let durVal = Double(duration)
+        let distVal = Double(distance)
+        
+        // Validation: Strength needs reps/weight (or just one), Cardio needs time/dist
+        // We'll be lenient and allow 0s, but Name is required
+        
+        for _ in 0..<setCount {
+            let newEx = ExerciseEntry(
+                name: name,
+                reps: rVal,
+                weight: wVal,
+                duration: durVal,
+                distance: distVal,
+                isCardio: isCardio,
+                note: note
+            )
+            exercises.append(newEx)
+        }
+        dismiss()
+    }
 }
 
+// Template Loader (Same as before)
 struct LoadTemplateSheet: View {
     let templates: [WorkoutTemplate]
     let onSelect: (WorkoutTemplate) -> Void
     @Environment(\.dismiss) var dismiss
-    @Environment(\.modelContext) var modelContext // To delete templates
+    @Environment(\.modelContext) var modelContext
     
     var body: some View {
         NavigationView {
@@ -324,20 +401,16 @@ struct LoadTemplateSheet: View {
                             }
                         }
                     }
-                    .onDelete(perform: deleteTemplate)
+                    .onDelete { indexSet in
+                        withAnimation {
+                            for index in indexSet { modelContext.delete(templates[index]) }
+                        }
+                    }
                 }
             }
             .navigationTitle("Load Template")
             .toolbar {
                 Button("Cancel") { dismiss() }
-            }
-        }
-    }
-    
-    func deleteTemplate(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(templates[index])
             }
         }
     }

@@ -42,8 +42,22 @@ struct WorkoutDetailView: View {
                                 }
                             }
                             Spacer()
-                            Text("\(exercise.reps) x \(exercise.weight, specifier: "%.1f")")
-                                .monospacedDigit()
+                            
+                            // --- NEW: Display Logic ---
+                            if exercise.isCardio {
+                                VStack(alignment: .trailing) {
+                                    if let dist = exercise.distance, dist > 0 {
+                                        Text("\(dist, specifier: "%.2f") km")
+                                    }
+                                    if let time = exercise.duration, time > 0 {
+                                        Text("\(Int(time)) min")
+                                    }
+                                }
+                                .font(.callout).monospacedDigit().foregroundColor(.blue)
+                            } else {
+                                Text("\(exercise.reps ?? 0) x \(exercise.weight ?? 0.0, specifier: "%.1f")")
+                                    .monospacedDigit()
+                            }
                         }
                     }
                 }

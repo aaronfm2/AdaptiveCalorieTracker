@@ -23,23 +23,31 @@ final class Workout {
 @Model
 final class ExerciseEntry {
     var name: String
-    var reps: Int
-    var weight: Double
+    var reps: Int?
+    var weight: Double?
     var note: String
     
-    init(name: String, reps: Int, weight: Double, note: String = "") {
+    // --- NEW: Cardio Fields ---
+    var duration: Double? // Minutes
+    var distance: Double? // Kilometers
+    var isCardio: Bool = false
+    
+    init(name: String, reps: Int? = nil, weight: Double? = nil, duration: Double? = nil, distance: Double? = nil, isCardio: Bool = false, note: String = "") {
         self.name = name
         self.reps = reps
         self.weight = weight
+        self.duration = duration
+        self.distance = distance
+        self.isCardio = isCardio
         self.note = note
     }
 }
 
-// --- NEW: Template Models ---
+// --- Template Models ---
 
 @Model
 final class WorkoutTemplate {
-    var name: String // e.g. "Chest Day"
+    var name: String
     var category: String
     var muscleGroups: [String]
     
@@ -55,14 +63,22 @@ final class WorkoutTemplate {
 @Model
 final class TemplateExerciseEntry {
     var name: String
-    var reps: Int
-    var weight: Double
+    var reps: Int?
+    var weight: Double?
     var note: String
     
-    init(name: String, reps: Int, weight: Double, note: String = "") {
+    // --- NEW: Cardio Fields ---
+    var duration: Double?
+    var distance: Double?
+    var isCardio: Bool = false
+    
+    init(name: String, reps: Int? = nil, weight: Double? = nil, duration: Double? = nil, distance: Double? = nil, isCardio: Bool = false, note: String = "") {
         self.name = name
         self.reps = reps
         self.weight = weight
+        self.duration = duration
+        self.distance = distance
+        self.isCardio = isCardio
         self.note = note
     }
 }
