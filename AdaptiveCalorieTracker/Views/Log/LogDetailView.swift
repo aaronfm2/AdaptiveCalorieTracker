@@ -70,8 +70,6 @@ struct LogDetailView: View {
         }
     }
     
-    // ... [Keep syncHealthData, manualOverrideBanner, dateHeader, nutritionSection, workoutsSection, workoutCard, exerciseRow] ...
-    
     private func syncHealthData() {
         isSyncing = true
         Task {
@@ -253,10 +251,16 @@ struct LogDetailView: View {
     }
 }
 
-// ... [Keep EditOverridesSheet and MacroCard] ...
+// Edit Manual Overrides Sheet
 struct EditOverridesSheet: View {
     @Bindable var log: DailyLog
     @Environment(\.dismiss) var dismiss
+    
+    // 1. Create temporary state to hold edits
+    @State private var editedCalories: Int = 0
+    @State private var editedProtein: Int = 0
+    @State private var editedCarbs: Int = 0
+    @State private var editedFat: Int = 0
     
     var body: some View {
         NavigationView {
@@ -265,25 +269,26 @@ struct EditOverridesSheet: View {
                     HStack {
                         Text("Calories (+)")
                         Spacer()
-                        TextField("0", value: $log.manualCalories, format: .number)
+                        // 2. Bind to the local state, not the log directly
+                        TextField("0", value: $editedCalories, format: .number)
                             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                     }
                     HStack {
                         Text("Protein (+)")
                         Spacer()
-                        TextField("0", value: $log.manualProtein, format: .number)
+                        TextField("0", value: $editedProtein, format: .number)
                             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                     }
                     HStack {
                         Text("Carbs (+)")
                         Spacer()
-                        TextField("0", value: $log.manualCarbs, format: .number)
+                        TextField("0", value: $editedCarbs, format: .number)
                             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                     }
                     HStack {
                         Text("Fat (+)")
                         Spacer()
-                        TextField("0", value: $log.manualFat, format: .number)
+                        TextField("0", value: $editedFat, format: .number)
                             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                     }
                 }
@@ -291,9 +296,41 @@ struct EditOverridesSheet: View {
             }
             .navigationTitle("Edit Manual Entries")
             .toolbar {
-                Button("Done") { dismiss() }
+                // 3. Call saveChanges when Done is pressed
+                Button("Done") {
+                    saveChanges()
+                    dismiss()
+                }
+            }
+            // 4. Initialize state with existing values when the sheet appears
+            .onAppear {
+                editedCalories = log.manualCalories
+                editedProtein = log.manualProtein
+                editedCarbs = log.manualCarbs
+                editedFat = log.manualFat
             }
         }
+    }
+    
+    // 5. Calculate the difference and update the totals
+    private func saveChanges() {
+        // Calculate difference (New Input - Old Value)
+        let calDiff = editedCalories - log.manualCalories
+        let pDiff = editedProtein - log.manualProtein
+        let cDiff = editedCarbs - log.manualCarbs
+        let fDiff = editedFat - log.manualFat
+        
+        // Update Totals
+        log.caloriesConsumed += calDiff
+        if let currentP = log.protein { log.protein = currentP + pDiff } else { log.protein = pDiff }
+        if let currentC = log.carbs { log.carbs = currentC + cDiff } else { log.carbs = cDiff }
+        if let currentF = log.fat { log.fat = currentF + fDiff } else { log.fat = fDiff }
+        
+        // Update Manual Values
+        log.manualCalories = editedCalories
+        log.manualProtein = editedProtein
+        log.manualCarbs = editedCarbs
+        log.manualFat = editedFat
     }
 }
 
