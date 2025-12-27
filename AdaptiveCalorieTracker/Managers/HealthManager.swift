@@ -34,7 +34,7 @@ class HealthManager: ObservableObject {
 
     func fetchTodayCaloriesBurned() {
         let caloriesType = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned)!
-        let predicate = getTodayPredicate()
+        let predicate = getPredicate(for: Date())
 
         let query = HKStatisticsQuery(quantityType: caloriesType, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
             guard let result = result, let sum = result.sumQuantity() else { return }
@@ -58,7 +58,7 @@ class HealthManager: ObservableObject {
         
         for (identifier, updateBlock) in nutritionTypes {
             guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { continue }
-            let predicate = getTodayPredicate()
+            let predicate = getPredicate(for: Date())
             
             let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
                 guard let result = result, let sum = result.sumQuantity() else { return }
@@ -75,9 +75,64 @@ class HealthManager: ObservableObject {
         }
     }
     
-    private func getTodayPredicate() -> NSPredicate {
-        let now = Date()
-        let startOfDay = Calendar.current.startOfDay(for: now)
-        return HKQuery.predicateForSamples(withStart: startOfDay, end: now, options: .strictStartDate)
+    // MARK: - Historical Data Sync
+    
+    /// Asynchronously fetches all relevant health data for a specific date
+    func fetchHistoricalHealthData(for date: Date) async -> (burned: Double, consumed: Double, protein: Double, carbs: Double, fat: Double) {
+        return await withTaskGroup(of: (HKQuantityTypeIdentifier, Double).self) { group in
+            // Define metrics to fetch
+            let metrics: [(HKQuantityTypeIdentifier, HKUnit)] = [
+                (.activeEnergyBurned, .kilocalorie()),
+                (.dietaryEnergyConsumed, .kilocalorie()),
+                (.dietaryProtein, .gram()),
+                (.dietaryCarbohydrates, .gram()),
+                (.dietaryFatTotal, .gram())
+            ]
+            
+            // Add tasks to group
+            for (id, unit) in metrics {
+                group.addTask {
+                    let val = await self.fetchSum(for: id, unit: unit, date: date)
+                    return (id, val)
+                }
+            }
+            
+            // Collect results
+            var results: [HKQuantityTypeIdentifier: Double] = [:]
+            for await (id, value) in group {
+                results[id] = value
+            }
+            
+            return (
+                burned: results[.activeEnergyBurned] ?? 0,
+                consumed: results[.dietaryEnergyConsumed] ?? 0,
+                protein: results[.dietaryProtein] ?? 0,
+                carbs: results[.dietaryCarbohydrates] ?? 0,
+                fat: results[.dietaryFatTotal] ?? 0
+            )
+        }
+    }
+    
+    // Helper helper to wrap HKStatisticsQuery in async
+    private func fetchSum(for identifier: HKQuantityTypeIdentifier, unit: HKUnit, date: Date) async -> Double {
+        return await withCheckedContinuation { continuation in
+            guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else {
+                continuation.resume(returning: 0)
+                return
+            }
+            
+            let predicate = getPredicate(for: date)
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, _ in
+                let sum = result?.sumQuantity()?.doubleValue(for: unit) ?? 0
+                continuation.resume(returning: sum)
+            }
+            healthStore.execute(query)
+        }
+    }
+    
+    private func getPredicate(for date: Date) -> NSPredicate {
+        let startOfDay = Calendar.current.startOfDay(for: date)
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!
+        return HKQuery.predicateForSamples(withStart: startOfDay, end: endOfDay, options: .strictStartDate)
     }
 }

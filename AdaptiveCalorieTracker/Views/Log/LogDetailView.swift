@@ -5,6 +5,10 @@ struct LogDetailView: View {
     let log: DailyLog
     let workouts: [Workout]
     
+    // --- CHANGED: Add HealthManager access ---
+    @EnvironmentObject var healthManager: HealthManager
+    @State private var isSyncing = false
+    
     @AppStorage("enableCaloriesBurned") private var enableCaloriesBurned: Bool = true
     
     func groupExercises(_ exercises: [ExerciseEntry]) -> [(name: String, sets: [ExerciseEntry])] {
@@ -30,6 +34,45 @@ struct LogDetailView: View {
         }
         .navigationTitle("Daily Summary")
         .navigationBarTitleDisplayMode(.inline)
+        // --- CHANGED: Add Toolbar with Sync Button ---
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: syncHealthData) {
+                    if isSyncing {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .foregroundColor(.blue)
+                    }
+                }
+                .disabled(isSyncing)
+            }
+        }
+    }
+    
+    // MARK: - Actions
+    
+    private func syncHealthData() {
+        isSyncing = true
+        Task {
+            let data = await healthManager.fetchHistoricalHealthData(for: log.date)
+            
+            // Update UI on Main Actor
+            await MainActor.run {
+                withAnimation {
+                    // Only update fields if data exists (or overwrite if that's desired behavior)
+                    // Here we overwrite to ensure sync matches HealthKit exactly
+                    if data.consumed > 0 { log.caloriesConsumed = Int(data.consumed) }
+                    if enableCaloriesBurned { log.caloriesBurned = Int(data.burned) }
+                    
+                    if data.protein > 0 { log.protein = Int(data.protein) }
+                    if data.carbs > 0 { log.carbs = Int(data.carbs) }
+                    if data.fat > 0 { log.fat = Int(data.fat) }
+                    
+                    isSyncing = false
+                }
+            }
+        }
     }
     
     // MARK: - Subviews
@@ -189,7 +232,6 @@ struct LogDetailView: View {
                 Spacer()
             }
             
-            // --- CHANGED: Display note text here ---
             if !exercise.note.isEmpty {
                 Text(exercise.note)
                     .font(.caption)
