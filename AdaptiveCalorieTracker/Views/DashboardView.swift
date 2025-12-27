@@ -8,22 +8,20 @@ struct DashboardView: View {
     // Fetch logs for calorie data
     @Query(sort: \DailyLog.date, order: .forward) private var logs: [DailyLog]
     
-    // Fetch weights for the graph and progress (Reverse order so first is latest)
+    // Fetch weights for the graph (Reverse order so first is latest)
     @Query(sort: \WeightEntry.date, order: .reverse) private var weights: [WeightEntry]
     
     @StateObject var healthManager = HealthManager()
+    
+    // --- VIEW MODEL ---
+    @State private var viewModel = DashboardViewModel()
     
     // --- APP STORAGE SETTINGS ---
     @AppStorage("dailyCalorieGoal") private var dailyGoal: Int = 2000
     @AppStorage("targetWeight") private var targetWeight: Double = 70.0
     @AppStorage("goalType") private var goalType: String = "Cutting"
-    
-    // New Settings for Estimation Logic
     @AppStorage("maintenanceCalories") private var maintenanceCalories: Int = 2500
     @AppStorage("estimationMethod") private var estimationMethod: Int = 0
-    // 0 = Fixed Target (Logic 1), 1 = Avg Intake (Logic 2), 2 = Weight Trend (Logic 3)
-    
-    // --- NEW TOGGLE ---
     @AppStorage("enableCaloriesBurned") private var enableCaloriesBurned: Bool = true
     
     @State private var showingSettings = false
@@ -62,7 +60,28 @@ struct DashboardView: View {
                 Text("This is based on your weight change and your calories consumed over the last 30 days.")
             }
             .onAppear(perform: setupOnAppear)
+            // Recalculate whenever data or settings change
+            .onChange(of: logs) { _, _ in refreshViewModel() }
+            .onChange(of: weights) { _, _ in refreshViewModel() }
+            .onChange(of: dailyGoal) { _, _ in refreshViewModel() }
+            .onChange(of: targetWeight) { _, _ in refreshViewModel() }
+            .onChange(of: estimationMethod) { _, _ in refreshViewModel() }
+            .onChange(of: maintenanceCalories) { _, _ in refreshViewModel() }
         }
+    }
+
+    // MARK: - Logic / ViewModel Binding
+    private func refreshViewModel() {
+        let settings = DashboardSettings(
+            dailyGoal: dailyGoal,
+            targetWeight: targetWeight,
+            goalType: goalType,
+            maintenanceCalories: maintenanceCalories,
+            estimationMethod: estimationMethod,
+            enableCaloriesBurned: enableCaloriesBurned
+        )
+        
+        viewModel.updateMetrics(logs: logs, weights: weights, settings: settings)
     }
 
     // MARK: - Progress Card
@@ -90,15 +109,15 @@ struct DashboardView: View {
                         .font(.title).bold()
                         .foregroundColor(.green)
                 } else {
-                    // Calculate based on selected logic
-                    if let daysLeft = calculateDaysRemaining(currentWeight: current) {
+                    // Use ViewModel Data
+                    if let daysLeft = viewModel.daysRemaining {
                         Text("\(daysLeft)")
                             .font(.system(size: 60, weight: .bold))
                             .foregroundColor(.orange)
                         Text("Days until target hit")
                             .font(.headline)
                         
-                        Text(logicDescription)
+                        Text(viewModel.logicDescription)
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .padding(.top, 4)
@@ -107,15 +126,15 @@ struct DashboardView: View {
                         
                         Text("Estimate Unavailable")
                             .font(.title3).bold()
-                        Text(progressWarningMessage)
+                        Text(viewModel.progressWarningMessage)
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                     }
                     
-                    // --- Estimated Maintenance ---
-                    if let estMaint = calculateEstimatedMaintenance() {
+                    // --- Estimated Maintenance (From ViewModel) ---
+                    if let estMaint = viewModel.estimatedMaintenance {
                         Divider().padding(.vertical, 8)
                         
                         HStack(spacing: 6) {
@@ -129,7 +148,6 @@ struct DashboardView: View {
                             }
                         }
                     }
-                    // -----------------------------
                 }
             } else {
                 Text("\(goalType): \(targetWeight, specifier: "%.1f") kg")
@@ -148,142 +166,10 @@ struct DashboardView: View {
         .background(RoundedRectangle(cornerRadius: 15).fill(Color.orange.opacity(0.1)))
     }
 
-    // MARK: - Calculation Logic
-    
-    private var logicDescription: String {
-        switch estimationMethod {
-        case 0: return "Based on 30-day weight trend"
-        case 1: return "Based on 7-day average intake"
-        case 2: return "Based on maintenance vs daily goal"
-        default: return ""
-        }
-    }
-    
-    private var progressWarningMessage: String {
-        switch estimationMethod {
-        case 0: // Weight Trend
-            return "Need more weight data over 30 days, or trend is moving away from goal."
-        case 1: // Avg Intake
-            return goalType == "Cutting"
-                ? "Eat less than maintenance on average to see estimate"
-                : "Eat more than maintenance on average to see estimate"
-        case 2: // Fixed Target
-            return goalType == "Cutting"
-                ? "Your daily goal must be lower than your maintenance (\(maintenanceCalories))"
-                : "Your daily goal must be higher than your maintenance (\(maintenanceCalories))"
-        default: return ""
-        }
-    }
-    
-    private func calculateEstimatedMaintenance() -> Int? {
-        let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
-        
-        // Get weights in range, sorted Oldest -> Newest
-        let recentWeights = weights.filter { $0.date >= thirtyDaysAgo }.sorted { $0.date < $1.date }
-        
-        // Need at least 2 distinct weight entries
-        guard let first = recentWeights.first, let last = recentWeights.last, first.id != last.id else {
-            return nil
-        }
-        
-        // --- FIX: Use startOfDay to count calendar days correctly ---
-        let start = Calendar.current.startOfDay(for: first.date)
-        let end = Calendar.current.startOfDay(for: last.date)
-        let days = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
-        
-        guard days > 0 else { return nil }
-        
-        // Weight Change (+ve gain, -ve loss)
-        let weightChange = last.weight - first.weight
-        
-        // Exclude Today's Logs
-        let today = Calendar.current.startOfDay(for: Date())
-        
-        // Get logs strictly within this date range AND strictly before today
-        let relevantLogs = logs.filter { $0.date >= first.date && $0.date <= last.date && $0.date < today }
-        
-        guard !relevantLogs.isEmpty else { return nil }
-        
-        // Calculate Average Daily Intake
-        let totalConsumed = relevantLogs.reduce(0) { $0 + $1.caloriesConsumed }
-        let avgDailyIntake = Double(totalConsumed) / Double(relevantLogs.count)
-        
-        // Calculate Daily Energy Imbalance from Weight Change
-        let dailyImbalance = (weightChange * 7700.0) / Double(days)
-        
-        // Maintenance = Intake - Imbalance
-        let estimatedMaintenance = avgDailyIntake - dailyImbalance
-        
-        return Int(estimatedMaintenance)
-    }
-
-    private func calculateKgChangePerDay(method: Int) -> Double? {
-        // Method 0: Weight Trend (Last 30 Days)
-        if method == 0 {
-            let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
-            let recentWeights = weights.filter { $0.date >= thirtyDaysAgo }.sorted { $0.date < $1.date }
-            
-            guard let first = recentWeights.first, let last = recentWeights.last, first.id != last.id else { return nil }
-            
-            // --- FIX: Use startOfDay for robust day difference ---
-            let start = Calendar.current.startOfDay(for: first.date)
-            let end = Calendar.current.startOfDay(for: last.date)
-            let timeSpan = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
-            
-            if timeSpan > 0 {
-                let weightChange = last.weight - first.weight
-                return weightChange / Double(timeSpan)
-            }
-        }
-        
-        // Method 1: Avg Intake (User Maintenance - 7 Day Avg)
-        if method == 1 {
-            let today = Calendar.current.startOfDay(for: Date())
-            // Look at 7 days *before* today
-            let sevenDaysAgo = Calendar.current.date(byAdding: .day, value: -7, to: today)!
-            
-            let recentLogs = logs.filter { $0.date >= sevenDaysAgo && $0.date < today }
-            
-            if !recentLogs.isEmpty {
-                let totalConsumed = recentLogs.reduce(0) { $0 + $1.caloriesConsumed }
-                let avgConsumed = Double(totalConsumed) / Double(recentLogs.count)
-                
-                return (avgConsumed - Double(maintenanceCalories)) / 7700.0
-            }
-        }
-        
-        // Method 2: Fixed Target (User Maintenance - User Target)
-        if method == 2 {
-            return (Double(dailyGoal) - Double(maintenanceCalories)) / 7700.0
-        }
-        
-        return nil
-    }
-
-    private func calculateDaysRemaining(currentWeight: Double) -> Int? {
-        guard let kgPerDay = calculateKgChangePerDay(method: estimationMethod) else { return nil }
-        
-        if goalType == "Cutting" && kgPerDay >= 0 { return nil }
-        if goalType == "Bulking" && kgPerDay <= 0 { return nil }
-        
-        let weightDiff = targetWeight - currentWeight
-        let days = weightDiff / kgPerDay
-        
-        if days > 0 { return Int(days) }
-        return nil
-    }
-
-    // MARK: - New Projection Graph
-    private struct ProjectionPoint: Identifiable {
-        let id = UUID()
-        let date: Date
-        let weight: Double
-        let method: String
-    }
-    
+    // MARK: - Projection Graph
     private var projectionComparisonCard: some View {
         let currentWeight = weights.first?.weight ?? 0
-        let projections = generateProjections(startWeight: currentWeight)
+        let projections = viewModel.projectionPoints
         
         let allValues = projections.map { $0.weight } + [currentWeight, targetWeight]
         let minW = allValues.min() ?? 0
@@ -335,25 +221,6 @@ struct DashboardView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
     }
     
-    private func generateProjections(startWeight: Double) -> [ProjectionPoint] {
-        var points: [ProjectionPoint] = []
-        let today = Date()
-        let comparisonMethods = [(0, "Trend (30d)"), (1, "Avg Intake (7d)"), (2, "Fixed Goal")]
-        
-        for (methodId, label) in comparisonMethods {
-            // --- FIX: Removed the abs(rate) > 0.001 check so even small trends show ---
-            if let rate = calculateKgChangePerDay(method: methodId) {
-                points.append(ProjectionPoint(date: today, weight: startWeight, method: label))
-                for i in 1...60 {
-                    let nextDate = Calendar.current.date(byAdding: .day, value: i, to: today)!
-                    let projectedWeight = startWeight + (rate * Double(i))
-                    points.append(ProjectionPoint(date: nextDate, weight: projectedWeight, method: label))
-                }
-            }
-        }
-        return points
-    }
-
     // MARK: - Graphs
     private var weightTrendCard: some View {
         let allWeights = weights.map { $0.weight }
@@ -399,15 +266,12 @@ struct DashboardView: View {
     
     private var calorieBalanceCard: some View {
         VStack(alignment: .leading) {
-            // Dynamic Title based on Toggle
             Text(enableCaloriesBurned ? "Net Calories (Last 7 Days)" : "Calories Consumed (Last 7 Days)")
                 .font(.headline)
             
             Chart {
                 ForEach(logs.suffix(7)) { log in
-                    // Determine value to plot
                     let val = enableCaloriesBurned ? log.netCalories : log.caloriesConsumed
-                    
                     BarMark(
                         x: .value("Day", log.date, unit: .day),
                         y: .value("Net", val)
@@ -448,7 +312,6 @@ struct DashboardView: View {
                             .multilineTextAlignment(.trailing)
                     }
                     
-                    // --- NEW TOGGLE ---
                     Toggle("Track Calories Burned", isOn: $enableCaloriesBurned)
                 }
                 
@@ -488,5 +351,7 @@ struct DashboardView: View {
             let newItem = DailyLog(date: today, goalType: goalType)
             modelContext.insert(newItem)
         }
+        
+        refreshViewModel()
     }
 }
