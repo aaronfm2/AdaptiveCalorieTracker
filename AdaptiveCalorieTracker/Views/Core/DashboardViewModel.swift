@@ -70,9 +70,9 @@ class DashboardViewModel {
     
     private func updateLogicDescription(method: Int) {
         switch method {
-        case 0: logicDescription = "Based on 30-day weight trend"
-        case 1: logicDescription = "Based on 7-day average intake"
-        case 2: logicDescription = "Based on maintenance vs daily goal"
+        case 0: logicDescription = "Based on 30-day Weight Trend"
+        case 1: logicDescription = "Based on 7-day Average Calorie Intake"
+        case 2: logicDescription = "Based on Fixed Daily Calorie Amount"
         default: logicDescription = ""
         }
     }

@@ -243,18 +243,6 @@ struct DashboardView: View {
                         Text("Estimate Unavailable").font(.title3).bold()
                         Text(viewModel.progressWarningMessage).font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
                     }
-                    
-                    // Only show if available (it will be nil if disabled)
-                    if let estMaint = viewModel.estimatedMaintenance {
-                        Divider().padding(.vertical, 8)
-                        HStack(spacing: 6) {
-                            Text("Your estimated Maintenance calories: \(estMaint)")
-                                .font(.subheadline).fontWeight(.medium)
-                            Button(action: { showingMaintenanceInfo = true }) {
-                                Image(systemName: "info.circle").foregroundColor(.blue)
-                            }
-                        }
-                    }
                 }
             } else {
                 Text("\(goalType): \(targetDisplay, specifier: "%.1f") \(weightLabel)").font(.subheadline).foregroundColor(.secondary)
@@ -431,6 +419,7 @@ struct DashboardView: View {
 
 struct GoalConfigurationView: View {
     @Environment(\.dismiss) var dismiss
+    @FocusState private var isInputFocused: Bool
     
     let appEstimatedMaintenance: Int?
     let latestWeightKg: Double?
@@ -441,10 +430,13 @@ struct GoalConfigurationView: View {
     // Inputs
     @State private var targetWeight: Double? = nil
     @State private var targetDate: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date())!
-    @State private var useAppEstimate: Bool = false
     
+    // Maintenance Source logic
+    @State private var maintenanceSource: Int = 0 // 0: Formula, 1: App Estimate, 2: Manual
+    @State private var manualMaintenanceInput: String = ""
+    @State private var maintenanceDisplay: Int = 0
+
     // Calculated Outputs
-    @State private var maintenanceInput: String = "" // Displayed as string for potential manual tweak
     @State private var dailyGoal: Int = 0
     @State private var calculatedDeficit: Int = 0
     @State private var derivedGoalType: GoalType = .maintenance
@@ -472,6 +464,7 @@ struct GoalConfigurationView: View {
                         TextField("Required", value: $targetWeight, format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
+                            .focused($isInputFocused)
                             .onChange(of: targetWeight) { _, _ in recalculate() }
                     }
                     
@@ -480,23 +473,32 @@ struct GoalConfigurationView: View {
                 }
                 
                 Section(header: Text("Maintenance Calorie Source")) {
-                    if appEstimatedMaintenance != nil {
-                        Picker("Base Maintenance On", selection: $useAppEstimate) {
-                            Text("Standard Formula (Gender/Weight)").tag(false)
-                            Text("App Estimate (30-Day Trend)").tag(true)
+                    Picker("Source", selection: $maintenanceSource) {
+                        Text("Formula").tag(0)
+                        if appEstimatedMaintenance != nil {
+                            Text("App Estimate").tag(1)
                         }
-                        .pickerStyle(.segmented)
-                        .onChange(of: useAppEstimate) { _, _ in recalculate() }
-                    } else {
-                        Text("Standard Formula (Gender/Weight)")
-                        Text("App estimate unavailable (requires 30 days of data).")
-                            .font(.caption).foregroundColor(.secondary)
+                        Text("Manual").tag(2)
                     }
+                    .pickerStyle(.segmented)
+                    .onChange(of: maintenanceSource) { _, _ in recalculate() }
                     
-                    HStack {
-                        Text("Base Maintenance")
-                        Spacer()
-                        Text("\(maintenanceInput) kcal").bold()
+                    if maintenanceSource == 2 {
+                        HStack {
+                            Text("Manual Maintenance")
+                            Spacer()
+                            TextField("kcal", text: $manualMaintenanceInput)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                                .focused($isInputFocused)
+                                .onChange(of: manualMaintenanceInput) { _, _ in recalculate() }
+                        }
+                    } else {
+                        HStack {
+                            Text("Base Maintenance")
+                            Spacer()
+                            Text("\(maintenanceDisplay) kcal").bold()
+                        }
                     }
                 }
                 
@@ -529,39 +531,43 @@ struct GoalConfigurationView: View {
                         save()
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .disabled(targetWeight == nil || latestWeightKg == nil)
+                    .disabled(targetWeight == nil || latestWeightKg == nil || (maintenanceSource == 2 && manualMaintenanceInput.isEmpty))
                 }
             }
             .navigationTitle("Reconfigure Goal")
             .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isInputFocused = false }
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
             }
             .onAppear {
-                // Initialize default logic
-                if let w = latestWeightKg {
-                    // Pre-fill target with current if not set, or leave nil?
-                    // Leaving nil forces user to input.
+                if appEstimatedMaintenance != nil {
+                    maintenanceSource = 1
                 }
                 recalculate()
             }
         }
     }
     
-    // Logic from OnboardingView adapted here
     private func recalculate() {
         guard let currentKg = latestWeightKg else { return }
         
         // 1. Determine Maintenance
-        var maint = 0
-        if useAppEstimate, let appEst = appEstimatedMaintenance {
-            maint = appEst
-        } else {
+        switch maintenanceSource {
+        case 0: // Formula
             let multiplier: Double = (userGender == .male) ? 32.0 : 29.0
-            maint = Int(currentKg * multiplier)
+            maintenanceDisplay = Int(currentKg * multiplier)
+        case 1: // App Estimate
+            maintenanceDisplay = appEstimatedMaintenance ?? 2500
+        case 2: // Manual
+            maintenanceDisplay = Int(manualMaintenanceInput) ?? 0
+        default:
+            break
         }
-        maintenanceInput = String(maint)
         
         // 2. Determine Goal Type
         guard let tWeightUser = targetWeight else { return }
@@ -578,11 +584,10 @@ struct GoalConfigurationView: View {
         // 3. Calculate Daily Goal
         let today = Calendar.current.startOfDay(for: Date())
         let target = Calendar.current.startOfDay(for: targetDate)
-        let components = Calendar.current.dateComponents([.day], from: today, to: target)
-        let days = components.day ?? 1
+        let days = Calendar.current.dateComponents([.day], from: today, to: target).day ?? 1
         
         if days <= 0 {
-            dailyGoal = maint
+            dailyGoal = maintenanceDisplay
             calculatedDeficit = 0
             return
         }
@@ -592,19 +597,16 @@ struct GoalConfigurationView: View {
         let dailyAdjustment = Int(totalCaloriesNeeded / Double(days))
         
         calculatedDeficit = dailyAdjustment
-        dailyGoal = maint + dailyAdjustment
+        dailyGoal = maintenanceDisplay + dailyAdjustment
     }
     
     private func save() {
         guard let tWeightUser = targetWeight else { return }
         
-        // Save to AppStorage
         UserDefaults.standard.set(tWeightUser.toStoredWeight(system: unitSystem), forKey: "targetWeight")
         UserDefaults.standard.set(dailyGoal, forKey: "dailyCalorieGoal")
         UserDefaults.standard.set(derivedGoalType.rawValue, forKey: "goalType")
-        if let maint = Int(maintenanceInput) {
-            UserDefaults.standard.set(maint, forKey: "maintenanceCalories")
-        }
+        UserDefaults.standard.set(maintenanceDisplay, forKey: "maintenanceCalories")
         
         dismiss()
     }
