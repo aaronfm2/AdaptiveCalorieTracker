@@ -12,8 +12,12 @@ struct OnboardingView: View {
     // --- NEW: Calorie Counting Toggle ---
     @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
     
+    // --- NEW: Prediction Method ---
+    @AppStorage("estimationMethod") private var estimationMethod: Int = 0
+    
     // ... [Keep existing variables: gender, currentWeight, goalType etc] ...
-    @State private var gender: Gender = .male
+    @AppStorage("userGender") private var gender: Gender = .male
+    
     @State private var currentWeight: Double? = nil
     @State private var targetWeight: Double? = nil
     @State private var goalType: GoalType = .cutting
@@ -31,12 +35,6 @@ struct OnboardingView: View {
     @AppStorage("goalType") private var storedGoalType: String = GoalType.cutting.rawValue
     @AppStorage("maintenanceCalories") private var storedMaintenance: Int = 2500
     @AppStorage("enableCaloriesBurned") private var storedEnableCaloriesBurned: Bool = true
-    
-    // ... [Keep Enums and Helpers] ...
-    enum Gender: String, CaseIterable {
-        case male = "Male"
-        case female = "Female"
-    }
 
     var unitLabel: String {
         return unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg"
@@ -168,7 +166,7 @@ struct OnboardingView: View {
         .onAppear { determineGoalType() }
     }
 
-    // --- UPDATED: Strategy Step with Toggle ---
+    // --- UPDATED: Strategy Step with Prediction Logic ---
     var strategyStep: some View {
         Form {
             Section(header: Text("Preferences")) {
@@ -177,6 +175,24 @@ struct OnboardingView: View {
                 
                 if isCalorieCountingEnabled {
                     Toggle("Track Calories Burned?", isOn: $trackCaloriesBurned)
+                }
+            }
+            
+            // --- NEW: Prediction Logic in Onboarding ---
+            Section("Goal Prediction Logic") {
+                if isCalorieCountingEnabled {
+                    Picker("Method", selection: $estimationMethod) {
+                        Text("30-Day Weight Trend").tag(0)
+                        Text("Avg 7 Day Cal Consumption").tag(1)
+                        Text("Fixed Daily Cal").tag(2)
+                    }
+                    Text("This determines how we will calculate the number of days to achieve your goal.")
+                        .font(.caption).foregroundColor(.secondary)
+                } else {
+                    Text("30-Day Weight Trend")
+                        .foregroundColor(.secondary)
+                    Text("Calorie counting is disabled.")
+                        .font(.caption).foregroundColor(.secondary)
                 }
             }
             
@@ -212,6 +228,8 @@ struct OnboardingView: View {
                     Section(header: Text("Calculations")) {
                         HStack {
                             Text("Est. Maintenance")
+                            Text("Est. using your Gender & Weight.")
+                                .font(.caption).foregroundColor(.secondary)
                             Spacer()
                             TextField("kcal", text: $maintenanceInput)
                                 .keyboardType(.numberPad)

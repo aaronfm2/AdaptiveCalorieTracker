@@ -6,6 +6,12 @@ enum UnitSystem: String, CaseIterable, Codable {
     case imperial = "Imperial"
 }
 
+// MARK: - Gender (Moved from OnboardingView)
+enum Gender: String, CaseIterable, Codable {
+    case male = "Male"
+    case female = "Female"
+}
+
 // MARK: - Extensions for Conversion
 extension Double {
     func toUserWeight(system: String) -> Double {

@@ -23,10 +23,14 @@ struct DashboardView: View {
     @AppStorage("maintenanceTolerance") private var maintenanceTolerance: Double = 2.0
     @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
     
+    // --- NEW: User Profile ---
+    @AppStorage("userGender") private var userGender: Gender = .male
+    
     // --- NEW: Calorie Counting Toggle ---
     @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
     
     @State private var showingSettings = false
+    @State private var showingReconfigureGoal = false
     @State private var showingMaintenanceInfo = false
 
     var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
@@ -53,6 +57,12 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 settingsSheet
+            }
+            .sheet(isPresented: $showingReconfigureGoal) {
+                GoalConfigurationView(
+                    appEstimatedMaintenance: viewModel.estimatedMaintenance,
+                    latestWeightKg: weights.first?.weight
+                )
             }
             .alert("About Estimated Maintenance", isPresented: $showingMaintenanceInfo) {
                 Button("OK", role: .cancel) { }
@@ -87,9 +97,8 @@ struct DashboardView: View {
     }
     
     // ... [Keep checkGoalReached, targetProgressCard, projectionComparisonCard, weightTrendCard, workoutDistributionCard, byCategoryColor] ...
-    // Note: projectionComparisonCard will automatically update based on viewModel.projectionPoints changing
     
-    // MARK: - Settings Sheet
+    // MARK: - UPDATED: Settings Sheet
     private var settingsSheet: some View {
         NavigationView {
             Form {
@@ -100,84 +109,85 @@ struct DashboardView: View {
                         }
                     }
                     
-                    // --- NEW: Toggle ---
                     Toggle("Enable Calorie Counting", isOn: $isCalorieCountingEnabled)
-                }
-                
-                Section("Goal Settings") {
-                    Picker("Goal Type", selection: $goalType) {
-                        ForEach(GoalType.allCases, id: \.self) { type in
-                            Text(type.rawValue).tag(type.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.vertical, 5)
-
-                    let targetWeightBinding = Binding<Double>(
-                        get: { targetWeight.toUserWeight(system: unitSystem) },
-                        set: { targetWeight = $0.toStoredWeight(system: unitSystem) }
-                    )
                     
-                    HStack {
-                        Text(goalType == GoalType.maintenance.rawValue ? "Maintenance Weight (\(weightLabel))" : "Target Weight (\(weightLabel))")
-                        Spacer()
-                        TextField("0.0", value: targetWeightBinding, format: .number)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    
-                    if goalType == GoalType.maintenance.rawValue {
-                        let toleranceBinding = Binding<Double>(
-                            get: { maintenanceTolerance.toUserWeight(system: unitSystem) },
-                            set: { maintenanceTolerance = $0.toStoredWeight(system: unitSystem) }
-                        )
-                        HStack {
-                            Text("Tolerance (+/- \(weightLabel))")
-                            Spacer()
-                            TextField("0.0", value: toleranceBinding, format: .number)
-                                .keyboardType(.decimalPad)
-                                .multilineTextAlignment(.trailing)
-                        }
-                    }
-                    
-                    // Hide Calorie options if disabled
+                    // Moved from Goal Settings
                     if isCalorieCountingEnabled {
-                        HStack {
-                            Text("Daily Calorie Goal")
-                            Spacer()
-                            TextField("Calories", value: $dailyGoal, format: .number)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                        }
-                        
                         Toggle("Track Calories Burned", isOn: $enableCaloriesBurned)
                     }
                 }
                 
-                Section("Prediction Logic") {
-                    if isCalorieCountingEnabled {
-                        Picker("Method", selection: $estimationMethod) {
-                            Text("30-Day Weight Trend").tag(0)
-                            Text("Avg 7 Day Cal Consumption").tag(1)
-                            Text("Fixed Daily Cal").tag(2)
+                Section("Profile") {
+                    // Configurable Gender
+                    Picker("Gender", selection: $userGender) {
+                        ForEach(Gender.allCases, id: \.self) { gender in
+                            Text(gender.rawValue).tag(gender)
+                        }
+                    }
+                }
+                
+                if isCalorieCountingEnabled {
+                    Section("Current Goal") {
+                        // Read Only Fields
+                        HStack {
+                            Text("Goal Type")
+                            Spacer()
+                            Text(goalType).foregroundColor(.secondary)
                         }
                         
-                        if estimationMethod == 1 || estimationMethod == 2 {
-                            HStack {
-                                Text("Maintenance Calories")
-                                Spacer()
-                                TextField("Calories", value: $maintenanceCalories, format: .number)
-                                    .keyboardType(.numberPad)
-                                    .multilineTextAlignment(.trailing)
+                        HStack {
+                            Text(goalType == GoalType.maintenance.rawValue ? "Maintenance Weight" : "Target Weight")
+                            Spacer()
+                            Text("\(targetWeight.toUserWeight(system: unitSystem), specifier: "%.1f") \(weightLabel)")
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        HStack {
+                            Text("Daily Calorie Goal")
+                            Spacer()
+                            Text("\(dailyGoal) kcal").foregroundColor(.secondary)
+                        }
+                        
+                        Button("Reconfigure Goal") {
+                            showingSettings = false
+                            // Small delay to allow sheet to dismiss before presenting next
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                showingReconfigureGoal = true
                             }
-                            Text("Used to calculate deficit/surplus.")
+                        }
+                        .foregroundColor(.blue)
+                        .bold()
+                    }
+                    
+                    // --- RESTORED: Prediction Logic ---
+                    Section("Prediction Logic") {
+                        if isCalorieCountingEnabled {
+                            Picker("Method", selection: $estimationMethod) {
+                                Text("30-Day Weight Trend").tag(0)
+                                Text("Avg 7 Day Cal Consumption").tag(1)
+                                Text("Fixed Daily Cal").tag(2)
+                            }
+                        } else {
+                            Text("Fixed to 30-Day Weight Trend")
+                            Text("Calorie counting is disabled.")
                                 .font(.caption).foregroundColor(.secondary)
                         }
-                    } else {
-                        Text("Fixed to 30-Day Weight Trend")
-                            .foregroundColor(.secondary)
-                        Text("Calorie counting is disabled.")
-                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    
+                    if goalType == GoalType.maintenance.rawValue {
+                        Section("Maintenance Settings") {
+                            let toleranceBinding = Binding<Double>(
+                                get: { maintenanceTolerance.toUserWeight(system: unitSystem) },
+                                set: { maintenanceTolerance = $0.toStoredWeight(system: unitSystem) }
+                            )
+                            HStack {
+                                Text("Tolerance (+/- \(weightLabel))")
+                                Spacer()
+                                TextField("0.0", value: toleranceBinding, format: .number)
+                                    .keyboardType(.decimalPad)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
                     }
                 }
             }
@@ -414,5 +424,188 @@ struct DashboardView: View {
         case "lower": return .brown
         default: return .gray
         }
+    }
+}
+
+// MARK: - Goal Configuration View (Reconfigure)
+
+struct GoalConfigurationView: View {
+    @Environment(\.dismiss) var dismiss
+    
+    let appEstimatedMaintenance: Int?
+    let latestWeightKg: Double?
+    
+    @AppStorage("userGender") private var userGender: Gender = .male
+    @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
+    
+    // Inputs
+    @State private var targetWeight: Double? = nil
+    @State private var targetDate: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date())!
+    @State private var useAppEstimate: Bool = false
+    
+    // Calculated Outputs
+    @State private var maintenanceInput: String = "" // Displayed as string for potential manual tweak
+    @State private var dailyGoal: Int = 0
+    @State private var calculatedDeficit: Int = 0
+    @State private var derivedGoalType: GoalType = .maintenance
+    
+    var unitLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Goal Details")) {
+                    HStack {
+                        Text("Current Weight")
+                        Spacer()
+                        if let w = latestWeightKg {
+                            Text("\(w.toUserWeight(system: unitSystem), specifier: "%.1f") \(unitLabel)")
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("No Data").foregroundColor(.red)
+                        }
+                    }
+                    
+                    HStack {
+                        Text("Target Weight (\(unitLabel))")
+                        Spacer()
+                        TextField("Required", value: $targetWeight, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .onChange(of: targetWeight) { _, _ in recalculate() }
+                    }
+                    
+                    DatePicker("Target Date", selection: $targetDate, in: Date()..., displayedComponents: .date)
+                        .onChange(of: targetDate) { _, _ in recalculate() }
+                }
+                
+                Section(header: Text("Maintenance Calorie Source")) {
+                    if appEstimatedMaintenance != nil {
+                        Picker("Base Maintenance On", selection: $useAppEstimate) {
+                            Text("Standard Formula (Gender/Weight)").tag(false)
+                            Text("App Estimate (30-Day Trend)").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: useAppEstimate) { _, _ in recalculate() }
+                    } else {
+                        Text("Standard Formula (Gender/Weight)")
+                        Text("App estimate unavailable (requires 30 days of data).")
+                            .font(.caption).foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Base Maintenance")
+                        Spacer()
+                        Text("\(maintenanceInput) kcal").bold()
+                    }
+                }
+                
+                Section(header: Text("Results")) {
+                    HStack {
+                        Text("Goal Type")
+                        Spacer()
+                        Text(derivedGoalType.rawValue)
+                            .bold()
+                            .foregroundColor(derivedGoalType == .cutting ? .green : (derivedGoalType == .bulking ? .red : .blue))
+                    }
+                    
+                    HStack {
+                        Text("Daily Calorie Goal")
+                        Spacer()
+                        Text("\(dailyGoal) kcal").bold().foregroundColor(.blue)
+                    }
+                    
+                    HStack {
+                        Text("Daily Adjustment")
+                        Spacer()
+                        Text(calculatedDeficit < 0 ? "\(calculatedDeficit) deficit" : "+\(calculatedDeficit) surplus")
+                            .font(.caption)
+                            .foregroundColor(calculatedDeficit < 0 ? .green : .orange)
+                    }
+                }
+                
+                Section {
+                    Button("Save Configuration") {
+                        save()
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .disabled(targetWeight == nil || latestWeightKg == nil)
+                }
+            }
+            .navigationTitle("Reconfigure Goal")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .onAppear {
+                // Initialize default logic
+                if let w = latestWeightKg {
+                    // Pre-fill target with current if not set, or leave nil?
+                    // Leaving nil forces user to input.
+                }
+                recalculate()
+            }
+        }
+    }
+    
+    // Logic from OnboardingView adapted here
+    private func recalculate() {
+        guard let currentKg = latestWeightKg else { return }
+        
+        // 1. Determine Maintenance
+        var maint = 0
+        if useAppEstimate, let appEst = appEstimatedMaintenance {
+            maint = appEst
+        } else {
+            let multiplier: Double = (userGender == .male) ? 32.0 : 29.0
+            maint = Int(currentKg * multiplier)
+        }
+        maintenanceInput = String(maint)
+        
+        // 2. Determine Goal Type
+        guard let tWeightUser = targetWeight else { return }
+        let tWeightKg = tWeightUser.toStoredWeight(system: unitSystem)
+        
+        if tWeightKg > currentKg {
+            derivedGoalType = .bulking
+        } else if tWeightKg < currentKg {
+            derivedGoalType = .cutting
+        } else {
+            derivedGoalType = .maintenance
+        }
+        
+        // 3. Calculate Daily Goal
+        let today = Calendar.current.startOfDay(for: Date())
+        let target = Calendar.current.startOfDay(for: targetDate)
+        let components = Calendar.current.dateComponents([.day], from: today, to: target)
+        let days = components.day ?? 1
+        
+        if days <= 0 {
+            dailyGoal = maint
+            calculatedDeficit = 0
+            return
+        }
+        
+        let weightDiff = tWeightKg - currentKg
+        let totalCaloriesNeeded = weightDiff * 7700.0
+        let dailyAdjustment = Int(totalCaloriesNeeded / Double(days))
+        
+        calculatedDeficit = dailyAdjustment
+        dailyGoal = maint + dailyAdjustment
+    }
+    
+    private func save() {
+        guard let tWeightUser = targetWeight else { return }
+        
+        // Save to AppStorage
+        UserDefaults.standard.set(tWeightUser.toStoredWeight(system: unitSystem), forKey: "targetWeight")
+        UserDefaults.standard.set(dailyGoal, forKey: "dailyCalorieGoal")
+        UserDefaults.standard.set(derivedGoalType.rawValue, forKey: "goalType")
+        if let maint = Int(maintenanceInput) {
+            UserDefaults.standard.set(maint, forKey: "maintenanceCalories")
+        }
+        
+        dismiss()
     }
 }
