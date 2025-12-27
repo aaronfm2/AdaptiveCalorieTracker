@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import AudioToolbox
 
 struct AddWorkoutView: View {
     @Environment(\.modelContext) private var modelContext
@@ -25,6 +26,10 @@ struct AddWorkoutView: View {
                 sessionSection
                 exercisesSection
                 addExerciseSection
+                
+                // New Rest Timer Section
+                RestTimerSection()
+                
                 notesSection
             }
             .navigationTitle(workoutToEdit == nil ? "Log Workout" : "Edit Workout")
@@ -188,6 +193,133 @@ extension AddWorkoutView {
     }
 }
 
+// MARK: - Rest Timer Component
+struct RestTimerSection: View {
+    @State private var timeRemaining: Int = 0
+    @State private var timer: Timer? = nil
+    @State private var isRunning = false
+    
+    // Presets in seconds
+    let presets = [30, 60, 90, 120]
+    
+    var body: some View {
+        Section("Rest Timer") {
+            VStack(spacing: 15) {
+                // Time Display
+                Text(formatTime(timeRemaining))
+                    .font(.system(size: 40, weight: .bold, design: .monospaced))
+                    .foregroundColor(timeRemaining > 0 ? .primary : .secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                
+                // Controls
+                HStack(spacing: 20) {
+                    if isRunning {
+                        Button(action: pauseTimer) {
+                            Label("Pause", systemImage: "pause.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .tint(.orange)
+                    } else {
+                        Button(action: startTimer) {
+                            Label("Start", systemImage: "play.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .tint(.green)
+                        .disabled(timeRemaining == 0)
+                    }
+                    
+                    Button(action: resetTimer) {
+                        Label("Reset", systemImage: "arrow.counterclockwise")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .tint(.red)
+                }
+                .buttonStyle(.bordered)
+                
+                // Presets
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(presets, id: \.self) { seconds in
+                            Button("\(seconds)s") {
+                                setTime(seconds)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.blue)
+                        }
+                        
+                        Button("+10s") {
+                            addTime(10)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+    
+    // MARK: - Timer Logic
+    
+    func formatTime(_ totalSeconds: Int) -> String {
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+    
+    func setTime(_ seconds: Int) {
+        stopTimer()
+        timeRemaining = seconds
+        startTimer()
+    }
+    
+    func addTime(_ seconds: Int) {
+        timeRemaining += seconds
+    }
+    
+    func startTimer() {
+        guard !isRunning && timeRemaining > 0 else { return }
+        isRunning = true
+        
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            if timeRemaining > 0 {
+                timeRemaining -= 1
+            } else {
+                // Timer Finished
+                playAlertSound() // 2. Trigger sound here
+                stopTimer()
+            }
+        }
+    }
+    
+    func pauseTimer() {
+        isRunning = false
+        timer?.invalidate()
+        timer = nil
+    }
+    
+    func stopTimer() {
+        isRunning = false
+        timer?.invalidate()
+        timer = nil
+    }
+    
+    func resetTimer() {
+        stopTimer()
+        timeRemaining = 0
+    }
+    
+    // 3. Helper to play sound
+    func playAlertSound() {
+        // 1005 is the standard "alert" sound on iOS.
+        // kSystemSoundID_Vibrate (4095) can be used for vibration.
+        AudioServicesPlaySystemSound(1005)
+        AudioServicesPlaySystemSound(1005)
+        AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+    }
+}
+
 // MARK: - Subview for Editable Row
 struct EditExerciseRow: View {
     @Bindable var exercise: ExerciseEntry
@@ -266,18 +398,7 @@ struct AddExerciseSheet: View {
     
     @State private var name = ""
     @State private var note = ""
-    @State private var exerciseType: ExerciseType = .strength
-    
-    @State private var reps = ""
-    @State private var weight = ""
-    @State private var duration = ""
-    @State private var distance = ""
-    @State private var setCount = 1
-    
-    enum ExerciseType: String, CaseIterable {
-        case strength = "Strength"
-        case cardio = "Cardio"
-    }
+    @State private var isCardio = false
     
     var body: some View {
         NavigationView {
@@ -288,10 +409,8 @@ struct AddExerciseSheet: View {
                         
                         if !libraryExercises.isEmpty {
                             Menu {
-                                // --- UPDATED LOGIC: Filter Strictly by Selected Muscles ---
+                                // Filter strictly by Selected Muscles
                                 let filtered = libraryExercises.filter { ex in
-                                    // If no muscles are selected (unlikely but possible), show all.
-                                    // Otherwise, strictly show only exercises that overlap with workout muscles.
                                     workoutMuscles.isEmpty || !Set(ex.muscleGroups).isDisjoint(with: workoutMuscles)
                                 }
                                 
@@ -302,7 +421,6 @@ struct AddExerciseSheet: View {
                                         Button(ex.name) { selectFromLibrary(ex) }
                                     }
                                 }
-                                // -----------------------------------------------------------
                             } label: {
                                 Image(systemName: "book.circle")
                                     .font(.title2)
@@ -310,53 +428,7 @@ struct AddExerciseSheet: View {
                         }
                     }
                     
-                    Picker("Type", selection: $exerciseType) {
-                        ForEach(ExerciseType.allCases, id: \.self) { type in
-                            Text(type.rawValue).tag(type)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    if exerciseType == .strength {
-                        HStack {
-                            Text("Reps")
-                            Spacer()
-                            TextField("0", text: $reps).keyboardType(.numberPad).multilineTextAlignment(.trailing)
-                        }
-                        
-                        HStack {
-                            Text("Weight (kg)")
-                            Spacer()
-                            TextField("0.0", text: $weight).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
-                        }
-                    } else {
-                        HStack {
-                            Text("Duration (min)")
-                            Spacer()
-                            TextField("0", text: $duration).keyboardType(.numberPad).multilineTextAlignment(.trailing)
-                        }
-                        
-                        HStack {
-                            Text("Distance (km)")
-                            Spacer()
-                            TextField("0.0", text: $distance).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
-                        }
-                    }
-                    
                     TextField("Note (Optional)", text: $note)
-                }
-                
-                Section {
-                    Stepper(value: $setCount, in: 1...10) {
-                        HStack {
-                            Text("Add")
-                            Text("\(setCount) sets").bold().foregroundColor(.blue)
-                        }
-                    }
-                } header: {
-                    Text("Quick Add")
-                } footer: {
-                    Text("Adds multiple entries at once.")
                 }
             }
             .navigationTitle("Add Exercise")
@@ -366,7 +438,7 @@ struct AddExerciseSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        saveExercises()
+                        saveExercise()
                     }
                     .disabled(name.isEmpty)
                 }
@@ -376,28 +448,20 @@ struct AddExerciseSheet: View {
     
     func selectFromLibrary(_ ex: ExerciseDefinition) {
         self.name = ex.name
-        self.exerciseType = ex.isCardio ? .cardio : .strength
+        self.isCardio = ex.isCardio
     }
     
-    func saveExercises() {
-        let isCardio = (exerciseType == .cardio)
-        let rVal = Int(reps)
-        let wVal = Double(weight)
-        let durVal = Double(duration)
-        let distVal = Double(distance)
-        
-        for _ in 0..<setCount {
-            let newEx = ExerciseEntry(
-                name: name,
-                reps: rVal,
-                weight: wVal,
-                duration: durVal,
-                distance: distVal,
-                isCardio: isCardio,
-                note: note
-            )
-            exercises.append(newEx)
-        }
+    func saveExercise() {
+        let newEx = ExerciseEntry(
+            name: name,
+            reps: nil,
+            weight: nil,
+            duration: nil,
+            distance: nil,
+            isCardio: isCardio,
+            note: note
+        )
+        exercises.append(newEx)
         dismiss()
     }
 }
