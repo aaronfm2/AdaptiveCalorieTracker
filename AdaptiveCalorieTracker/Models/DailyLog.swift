@@ -3,12 +3,12 @@ import SwiftData
 
 @Model
 final class DailyLog {
-    @Attribute(.unique) var date: Date
+    @Attribute(.unique) var date: Date = Date()
     var weight: Double?
     
     // Total values (HealthKit + Manual)
-    var caloriesConsumed: Int
-    var caloriesBurned: Int
+    var caloriesConsumed: Int = 0
+    var caloriesBurned: Int = 0
     
     var goalType: String?
     

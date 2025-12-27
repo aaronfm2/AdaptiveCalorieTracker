@@ -3,11 +3,11 @@ import SwiftData
 
 @Model
 final class Workout {
-    var id: UUID
-    var date: Date
-    var category: String
-    var muscleGroups: [String]
-    var note: String
+    var id: UUID = UUID()
+    var date: Date = Date()
+    var category: String = ""
+    var muscleGroups: [String] = []
+    var note: String = ""
     
     @Relationship(deleteRule: .cascade) var exercises: [ExerciseEntry] = []
     
@@ -22,10 +22,10 @@ final class Workout {
 
 @Model
 final class ExerciseEntry {
-    var name: String
+    var name: String = ""
     var reps: Int?
     var weight: Double?
-    var note: String
+    var note: String = ""
     
     // --- NEW: Cardio Fields ---
     var duration: Double? // Minutes
@@ -47,9 +47,9 @@ final class ExerciseEntry {
 
 @Model
 final class WorkoutTemplate {
-    var name: String
-    var category: String
-    var muscleGroups: [String]
+    var name: String = ""
+    var category: String = ""
+    var muscleGroups: [String] = []
     
     @Relationship(deleteRule: .cascade) var exercises: [TemplateExerciseEntry] = []
     
@@ -62,10 +62,10 @@ final class WorkoutTemplate {
 
 @Model
 final class TemplateExerciseEntry {
-    var name: String
+    var name: String = ""
     var reps: Int?
     var weight: Double?
-    var note: String
+    var note: String = ""
     
     // --- NEW: Cardio Fields ---
     var duration: Double?
