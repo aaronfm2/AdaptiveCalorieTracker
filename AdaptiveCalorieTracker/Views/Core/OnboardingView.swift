@@ -10,8 +10,11 @@ struct OnboardingView: View {
     
     // --- User Inputs ---
     @State private var gender: Gender = .male
-    @State private var currentWeight: Double = 70.0
-    @State private var targetWeight: Double = 65.0
+    
+    // CHANGED: Optionals allow the fields to be blank/empty initially
+    @State private var currentWeight: Double? = nil
+    @State private var targetWeight: Double? = nil
+    
     @State private var goalType: GoalType = .cutting
     
     // Branching Logic
@@ -48,7 +51,7 @@ struct OnboardingView: View {
                     welcomeStep.tag(0)
                     biometricsStep.tag(1)
                     goalsStep.tag(2)
-                    strategyStep.tag(3) // The new branching step
+                    strategyStep.tag(3)
                     finalStep.tag(4)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -72,6 +75,8 @@ struct OnboardingView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
+                        // CHANGED: Disable Next if the required field for the step is empty
+                        .disabled(cannotMoveForward)
                     } else {
                         Button("Get Started") {
                             completeOnboarding()
@@ -82,6 +87,13 @@ struct OnboardingView: View {
                 .padding()
             }
         }
+    }
+    
+    // Helper to validate steps
+    var cannotMoveForward: Bool {
+        if currentStep == 1 { return currentWeight == nil } // Biometrics needs current weight
+        if currentStep == 2 { return targetWeight == nil }  // Goals needs target weight
+        return false
     }
     
     // MARK: - Steps
@@ -113,7 +125,8 @@ struct OnboardingView: View {
                 HStack {
                     Text("Current Weight (kg)")
                     Spacer()
-                    TextField("0.0", value: $currentWeight, format: .number)
+                    // CHANGED: Placeholder will show because value can be nil
+                    TextField("Required", value: $currentWeight, format: .number)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                 }
@@ -126,22 +139,35 @@ struct OnboardingView: View {
     var goalsStep: some View {
         Form {
             Section(header: Text("Your Goal")) {
-                Picker("Goal Type", selection: $goalType) {
-                    ForEach(GoalType.allCases, id: \.self) { type in
-                        Text(type.rawValue).tag(type)
-                    }
-                }
-                
+                // 1. Target Weight Input
                 HStack {
                     Text("Target Weight (kg)")
                     Spacer()
-                    TextField("0.0", value: $targetWeight, format: .number)
+                    // CHANGED: Placeholder will show because value can be nil
+                    TextField("Required", value: $targetWeight, format: .number)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
+                        // Trigger logic when target changes
+                        .onChange(of: targetWeight) { _, _ in
+                            determineGoalType()
+                        }
+                }
+                
+                // 2. Display the Automatically Detected Goal
+                HStack {
+                    Text("Goal Type")
+                    Spacer()
+                    Text(goalType.rawValue)
+                        .fontWeight(.medium)
+                        .foregroundColor(goalTypeColor)
                 }
             }
+            Section(footer: Text("We automatically calculate if you are cutting, bulking, or maintaining based on your target weight.")) {}
         }
         .navigationTitle("Goals")
+        .onAppear {
+            determineGoalType()
+        }
     }
     
     var strategyStep: some View {
@@ -173,14 +199,13 @@ struct OnboardingView: View {
                 Section(header: Text("Timeframe")) {
                     DatePicker("Achieve Goal By", selection: $targetDate, in: Date()..., displayedComponents: .date)
                         .onChange(of: targetDate) { _, _ in calculateGoalFromDate() }
-                        .onChange(of: maintenanceInput) { _, _ in calculateGoalFromDate() } // Recalculate if maintenance changes
+                        .onChange(of: maintenanceInput) { _, _ in calculateGoalFromDate() }
                 }
                 
                 Section(header: Text("Calculations")) {
                     HStack {
                         Text("Est. Maintenance")
                         Spacer()
-                        // Allow them to tweak the estimate if they want, even in auto mode
                         TextField("kcal", text: $maintenanceInput)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
@@ -240,12 +265,39 @@ struct OnboardingView: View {
     
     // MARK: - Logic
     
+    func determineGoalType() {
+        // CHANGED: safely unwrap values
+        guard let tWeight = targetWeight, let cWeight = currentWeight else {
+            // Default to maintenance if incomplete
+            goalType = .maintenance
+            return
+        }
+        
+        if tWeight > cWeight {
+            goalType = .bulking
+        } else if tWeight < cWeight {
+            goalType = .cutting
+        } else {
+            goalType = .maintenance
+        }
+    }
+    
+    var goalTypeColor: Color {
+        switch goalType {
+        case .cutting: return .green
+        case .bulking: return .red
+        case .maintenance: return .blue
+        }
+    }
+    
     /// 1. Estimate Maintenance based on weight/gender
     func estimateMaintenance() {
-        // Only override if empty or user hasn't typed a custom value yet (simple heuristic)
+        // CHANGED: safely unwrap
+        guard let cWeight = currentWeight else { return }
+        
         // Multiplier: Male ~32, Female ~29
         let multiplier: Double = (gender == .male) ? 32.0 : 29.0
-        let estimated = Int(currentWeight * multiplier)
+        let estimated = Int(cWeight * multiplier)
         maintenanceInput = String(estimated)
     }
     
@@ -253,6 +305,8 @@ struct OnboardingView: View {
     func calculateGoalFromDate() {
         guard !knowsDetails else { return }
         guard let maintenance = Int(maintenanceInput) else { return }
+        // CHANGED: safely unwrap
+        guard let tWeight = targetWeight, let cWeight = currentWeight else { return }
         
         let today = Calendar.current.startOfDay(for: Date())
         let target = Calendar.current.startOfDay(for: targetDate)
@@ -268,7 +322,7 @@ struct OnboardingView: View {
         }
         
         // Total change needed (kg)
-        let weightDiff = targetWeight - currentWeight
+        let weightDiff = tWeight - cWeight
         
         // Total Calories (7700 kcal per kg)
         let totalCaloriesNeeded = weightDiff * 7700.0
@@ -282,16 +336,19 @@ struct OnboardingView: View {
     }
     
     func completeOnboarding() {
+        // CHANGED: Final check to ensure we have values before saving
+        guard let finalCurrent = currentWeight, let finalTarget = targetWeight else { return }
+        
         // Save Settings
         storedGoalType = goalType.rawValue
-        storedTargetWeight = targetWeight
+        storedTargetWeight = finalTarget
         storedEnableCaloriesBurned = trackCaloriesBurned
         
         storedMaintenance = Int(maintenanceInput) ?? 2500
         storedDailyGoal = Int(dailyGoalInput) ?? 2000
         
         // Save Starting Weight
-        let firstEntry = WeightEntry(date: Date(), weight: currentWeight)
+        let firstEntry = WeightEntry(date: Date(), weight: finalCurrent)
         modelContext.insert(firstEntry)
         
         // Finish

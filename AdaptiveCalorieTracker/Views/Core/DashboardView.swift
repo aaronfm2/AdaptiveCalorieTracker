@@ -25,6 +25,9 @@ struct DashboardView: View {
     @AppStorage("estimationMethod") private var estimationMethod: Int = 0
     @AppStorage("enableCaloriesBurned") private var enableCaloriesBurned: Bool = true
     
+    // --- NEW: Maintenance Tolerance ---
+    @AppStorage("maintenanceTolerance") private var maintenanceTolerance: Double = 2.0
+    
     @State private var showingSettings = false
     @State private var showingMaintenanceInfo = false
 
@@ -47,9 +50,8 @@ struct DashboardView: View {
                 .padding()
             }
             .navigationTitle("Dashboard")
-            .navigationBarTitleDisplayMode(.inline) // Optional: Makes title small and centered
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // Change placement: .navigationBarLeading (left) or .navigationBarTrailing (right)
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
@@ -65,13 +67,13 @@ struct DashboardView: View {
                 Text("This is based on your weight change and your calories consumed over the last 30 days.")
             }
             .onAppear(perform: setupOnAppear)
-            // Recalculate whenever data or settings change
             .onChange(of: logs) { _, _ in refreshViewModel() }
             .onChange(of: weights) { _, _ in refreshViewModel() }
             .onChange(of: dailyGoal) { _, _ in refreshViewModel() }
             .onChange(of: targetWeight) { _, _ in refreshViewModel() }
             .onChange(of: estimationMethod) { _, _ in refreshViewModel() }
             .onChange(of: maintenanceCalories) { _, _ in refreshViewModel() }
+            .onChange(of: maintenanceTolerance) { _, _ in refreshViewModel() }
         }
     }
 
@@ -87,6 +89,19 @@ struct DashboardView: View {
         )
         
         viewModel.updateMetrics(logs: logs, weights: weights, settings: settings)
+    }
+    
+    // Helper to calculate goal status (Fixes the compiler error)
+    private func checkGoalReached(current: Double) -> Bool {
+        if goalType == GoalType.cutting.rawValue {
+            return current <= targetWeight
+        } else if goalType == GoalType.bulking.rawValue {
+            return current >= targetWeight
+        } else {
+            // Maintenance Logic: Check if within tolerance
+            let diff = abs(current - targetWeight)
+            return diff <= maintenanceTolerance
+        }
     }
 
     // MARK: - Progress Card
@@ -106,13 +121,17 @@ struct DashboardView: View {
                         .foregroundColor(.secondary)
                 }
                 
-                // Determine if the goal is reached
-                let isGoalReached = goalType == GoalType.cutting.rawValue ? current <= targetWeight : current >= targetWeight
-                
-                if isGoalReached {
+                // --- FIX: Logic moved to function call inside if statement ---
+                if checkGoalReached(current: current) {
                     Text("Target Reached!")
                         .font(.title).bold()
                         .foregroundColor(.green)
+                    
+                    if goalType == GoalType.maintenance.rawValue {
+                        Text("Within \(maintenanceTolerance, specifier: "%.1f")kg of goal")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 } else {
                     // Use ViewModel Data
                     if let daysLeft = viewModel.daysRemaining {
@@ -195,6 +214,14 @@ struct DashboardView: View {
                             Text("Goal: \(targetWeight, specifier: "%.1f")")
                                 .font(.caption2).bold().foregroundColor(.green)
                         }
+                    
+                    // Show maintenance boundaries if applicable
+                    if goalType == GoalType.maintenance.rawValue {
+                        RuleMark(y: .value("Upper", targetWeight + maintenanceTolerance))
+                            .foregroundStyle(.green.opacity(0.3))
+                        RuleMark(y: .value("Lower", targetWeight - maintenanceTolerance))
+                            .foregroundStyle(.green.opacity(0.3))
+                    }
 
                     ForEach(projections) { point in
                         LineMark(
@@ -304,12 +331,24 @@ struct DashboardView: View {
                     .padding(.vertical, 5)
 
                     HStack {
-                        Text("Target Weight (kg)")
+                        Text(goalType == GoalType.maintenance.rawValue ? "Maintenance Weight (kg)" : "Target Weight (kg)")
                         Spacer()
                         TextField("kg", value: $targetWeight, format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                     }
+                    
+                    // --- NEW: Maintenance Tolerance Setting ---
+                    if goalType == GoalType.maintenance.rawValue {
+                        HStack {
+                            Text("Tolerance (+/- kg)")
+                            Spacer()
+                            TextField("kg", value: $maintenanceTolerance, format: .number)
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    
                     HStack {
                         Text("Daily Calorie Goal")
                         Spacer()
@@ -349,8 +388,6 @@ struct DashboardView: View {
     }
 
     private func setupOnAppear() {
-        // --- CHANGED: Don't request auth here if the App entry point does it.
-        // But refreshing data is fine.
         healthManager.fetchAllHealthData()
         
         let today = Calendar.current.startOfDay(for: Date())
