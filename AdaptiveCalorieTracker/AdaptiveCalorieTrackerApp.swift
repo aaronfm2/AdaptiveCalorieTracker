@@ -4,6 +4,10 @@ import SwiftData
 @main
 struct AdaptiveCalorieTrackerApp: App {
     @StateObject private var healthManager = HealthManager()
+    
+    // Tracks if onboarding is finished
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DailyLog.self,
@@ -12,7 +16,7 @@ struct AdaptiveCalorieTrackerApp: App {
             ExerciseEntry.self,
             WorkoutTemplate.self,
             TemplateExerciseEntry.self,
-            ExerciseDefinition.self // <--- Added
+            ExerciseDefinition.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,8 +29,12 @@ struct AdaptiveCalorieTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MainTabView()
-                .environmentObject(healthManager)
+            if hasCompletedOnboarding {
+                MainTabView()
+                    .environmentObject(healthManager)
+            } else {
+                OnboardingView(isCompleted: $hasCompletedOnboarding)
+            }
         }
         .modelContainer(sharedModelContainer)
     }
