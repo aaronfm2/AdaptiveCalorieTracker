@@ -11,8 +11,11 @@ struct WeightTrackerView: View {
     @State private var showingAddWeight = false
     @State private var newWeight: String = ""
     @State private var selectedDate: Date = Date()
+    
+    // 1. Add FocusState to control the keyboard
+    @FocusState private var isInputFocused: Bool
 
-    // Helper to initialize DataManager with the current context
+    // Use the DataManager for clean logic
     private var dataManager: DataManager {
         DataManager(modelContext: modelContext)
     }
@@ -40,7 +43,6 @@ struct WeightTrackerView: View {
             .navigationTitle("Weight History")
             .toolbar {
                 Button(action: {
-                    // Quick Add: Defaults to NOW when opened
                     selectedDate = Date()
                     newWeight = ""
                     showingAddWeight = true
@@ -49,31 +51,53 @@ struct WeightTrackerView: View {
                 }
             }
             .sheet(isPresented: $showingAddWeight) {
-                VStack(spacing: 20) {
-                    Text("Log Weight").font(.headline)
-                    
-                    DatePicker("Date & Time", selection: $selectedDate, displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.graphical)
-                        .padding()
-                    
-                    HStack {
-                        Text("Weight (kg)")
+                // 2. Wrap in NavigationView so the toolbar appears correctly
+                NavigationView {
+                    VStack(spacing: 20) {
+                        DatePicker("Date & Time", selection: $selectedDate, displayedComponents: [.date, .hourAndMinute])
+                            .datePickerStyle(.graphical)
+                            .padding()
+                        
+                        HStack {
+                            Text("Weight (kg)")
+                            Spacer()
+                            TextField("0.0", text: $newWeight)
+                                .textFieldStyle(.roundedBorder)
+                                .keyboardType(.decimalPad)
+                                .frame(width: 100)
+                                .focused($isInputFocused) // 3. Bind focus state
+                        }
+                        .padding(.horizontal)
+                        
+                        Button("Save Entry") {
+                            saveWeight()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(newWeight.isEmpty)
+                        
                         Spacer()
-                        TextField("0.0", text: $newWeight)
-                            .textFieldStyle(.roundedBorder)
-                            .keyboardType(.decimalPad)
-                            .frame(width: 100)
                     }
-                    .padding(.horizontal)
-                    
-                    Button("Save Entry") {
-                        saveWeight()
+                    .padding()
+                    .navigationTitle("Log Weight")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        // 4. Add a 'Done' button to the keyboard
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") {
+                                isInputFocused = false
+                            }
+                        }
+                        
+                        // Optional: Add a Cancel button to the top-left
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") {
+                                showingAddWeight = false
+                            }
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(newWeight.isEmpty)
                 }
-                .padding()
-                .presentationDetents([.large])
+                .presentationDetents([.large]) // Ensure it has enough height
             }
         }
     }
@@ -81,11 +105,9 @@ struct WeightTrackerView: View {
     private func saveWeight() {
         guard let weightDouble = Double(newWeight) else { return }
         
-        // --- CHANGED: Use DataManager ---
-        // This handles both inserting the weight AND syncing it to the DailyLog
+        // Use DataManager to save and sync
         dataManager.addWeightEntry(date: selectedDate, weight: weightDouble, goalType: currentGoalType)
         
-        // Reset and close
         newWeight = ""
         showingAddWeight = false
     }
@@ -93,11 +115,7 @@ struct WeightTrackerView: View {
     private func deleteWeight(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
-                let weightToDelete = weights[index]
-                
-                // --- CHANGED: Use DataManager ---
-                // This deletes the weight AND fixes the DailyLog if necessary
-                dataManager.deleteWeightEntry(weightToDelete)
+                dataManager.deleteWeightEntry(weights[index])
             }
         }
     }
