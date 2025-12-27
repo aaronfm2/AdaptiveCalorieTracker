@@ -97,7 +97,7 @@ extension AddWorkoutView {
             
             Picker("Category", selection: $viewModel.category) {
                 ForEach(WorkoutCategories.allCases, id: \.self) { cat in
-                    Text(cat.rawValue).tag(cat)
+                    Text(cat.rawValue).tag(cat.rawValue)
                 }
             }
             
