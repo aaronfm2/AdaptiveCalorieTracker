@@ -5,15 +5,24 @@ import SwiftData
 final class DailyLog {
     @Attribute(.unique) var date: Date
     var weight: Double?
+    
+    // Total values (HealthKit + Manual)
     var caloriesConsumed: Int
     var caloriesBurned: Int
+    
     var goalType: String?
     
-    // --- NEW: Macro Tracking (Optional) ---
+    // Total Macros
     var protein: Int? // grams
     var carbs: Int?   // grams
     var fat: Int?     // grams
-    // --------------------------------------
+    
+    // --- NEW: Manual Overrides (Persisted separately) ---
+    var manualCalories: Int = 0
+    var manualProtein: Int = 0
+    var manualCarbs: Int = 0
+    var manualFat: Int = 0
+    // ----------------------------------------------------
     
     var netCalories: Int {
         return caloriesConsumed - caloriesBurned
@@ -28,5 +37,10 @@ final class DailyLog {
         self.protein = protein
         self.carbs = carbs
         self.fat = fat
+    }
+    
+    // Helper to detect if any override is active
+    var isOverridden: Bool {
+        return manualCalories != 0 || manualProtein != 0 || manualCarbs != 0 || manualFat != 0
     }
 }

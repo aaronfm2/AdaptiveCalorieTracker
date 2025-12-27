@@ -5,24 +5,19 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \DailyLog.date, order: .reverse) private var logs: [DailyLog]
     
-    // Fetch workouts to link them to logs
     @Query(sort: \Workout.date, order: .reverse) private var workouts: [Workout]
     
-    // --- CHANGED: Uses EnvironmentObject (Source of truth is now in App.swift) ---
     @EnvironmentObject var healthManager: HealthManager
     
     @AppStorage("dailyCalorieGoal") private var dailyGoal: Int = 2000
     @AppStorage("goalType") private var currentGoalType: String = GoalType.cutting.rawValue
-    
-    // --- NEW TOGGLE ---
     @AppStorage("enableCaloriesBurned") private var enableCaloriesBurned: Bool = true
     
     // Sheet State
     @State private var showingLogSheet = false
     @State private var selectedLogDate = Date()
-    @State private var inputMode = 0
+    @State private var inputMode = 0 // 0 = Add, 1 = Set
     
-    // --- NEW: Info Alert State ---
     @State private var showingInfoAlert = false
     
     // Inputs
@@ -38,7 +33,6 @@ struct ContentView: View {
                 
                 List {
                     ForEach(logs) { log in
-                        // Update: Pass ALL workouts found for this date
                         NavigationLink(destination: LogDetailView(
                             log: log,
                             workouts: getWorkouts(for: log.date)
@@ -51,7 +45,6 @@ struct ContentView: View {
             }
             .navigationTitle("Daily Logs")
             .toolbar {
-                // --- CHANGED: Replaced EditButton with Info Button ---
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showingInfoAlert = true }) {
                         Image(systemName: "info.circle")
@@ -76,35 +69,36 @@ struct ContentView: View {
             .sheet(isPresented: $showingLogSheet) {
                 logSheetContent
             }
-            // --- NEW: Info Alert ---
             .alert("Apple Health Sync", isPresented: $showingInfoAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("This data is automatically synced with Apple Health. If you use other apps (like MyFitnessPal) for tracking, ensure they are connected to Apple Health to view your logs here.")
+                Text("Data syncs with Apple Health. Manual entries are added ON TOP of HealthKit data.")
             }
             .onAppear(perform: setupOnAppear)
-            // --- SYNC HEALTHKIT DATA CHANGES ---
+            
+            // --- UPDATED SYNC LOGIC: Preserves Manual Overrides ---
             .onChange(of: healthManager.caloriesBurnedToday) { _, newValue in
                 updateTodayLog { $0.caloriesBurned = Int(newValue) }
             }
             .onChange(of: healthManager.caloriesConsumedToday) { _, newValue in
+                // Total = HealthKit Value + Manual Value
                 if newValue > 0 {
-                    updateTodayLog { $0.caloriesConsumed = Int(newValue) }
+                    updateTodayLog { $0.caloriesConsumed = Int(newValue) + $0.manualCalories }
                 }
             }
             .onChange(of: healthManager.proteinToday) { _, newValue in
                 if newValue > 0 {
-                    updateTodayLog { $0.protein = Int(newValue) }
+                    updateTodayLog { $0.protein = Int(newValue) + $0.manualProtein }
                 }
             }
             .onChange(of: healthManager.carbsToday) { _, newValue in
                 if newValue > 0 {
-                    updateTodayLog { $0.carbs = Int(newValue) }
+                    updateTodayLog { $0.carbs = Int(newValue) + $0.manualCarbs }
                 }
             }
             .onChange(of: healthManager.fatToday) { _, newValue in
                 if newValue > 0 {
-                    updateTodayLog { $0.fat = Int(newValue) }
+                    updateTodayLog { $0.fat = Int(newValue) + $0.manualFat }
                 }
             }
         }
@@ -162,12 +156,7 @@ struct ContentView: View {
                     }
                 }
                 
-                if inputMode == 1 {
-                    Section {
-                        Text("Warning: 'Set Total' overwrites existing data for this date.")
-                            .font(.caption).foregroundColor(.red)
-                    }
-                }
+                Section(footer: Text(inputMode == 0 ? "Values will be added to existing HealthKit data." : "Calculates the offset needed to reach this total.")) { }
             }
             .navigationTitle("Log Details")
             .toolbar {
@@ -185,24 +174,56 @@ struct ContentView: View {
     private func saveLog() {
         let logDate = Calendar.current.startOfDay(for: selectedLogDate)
         let calVal = Int(caloriesInput) ?? 0
-        let pVal = Int(proteinInput)
-        let cVal = Int(carbsInput)
-        let fVal = Int(fatInput)
+        let pVal = Int(proteinInput) ?? 0
+        let cVal = Int(carbsInput) ?? 0
+        let fVal = Int(fatInput) ?? 0
         
-        if let existingLog = logs.first(where: { $0.date == logDate }) {
+        let existingLog = logs.first(where: { $0.date == logDate })
+        
+        if let log = existingLog {
             if inputMode == 0 {
-                existingLog.caloriesConsumed += calVal
+                // ADD MODE: Simply increase manual values and total
+                log.manualCalories += calVal
+                log.caloriesConsumed += calVal
+                
+                log.manualProtein += pVal
+                log.protein = (log.protein ?? 0) + pVal
+                
+                log.manualCarbs += cVal
+                log.carbs = (log.carbs ?? 0) + cVal
+                
+                log.manualFat += fVal
+                log.fat = (log.fat ?? 0) + fVal
+                
             } else {
-                existingLog.caloriesConsumed = calVal
+                // SET TOTAL MODE: Calculate difference and store as manual
+                // Assume (Total - Manual) = HealthKit Base
+                let currentHKCalories = log.caloriesConsumed - log.manualCalories
+                log.manualCalories = calVal - currentHKCalories
+                log.caloriesConsumed = calVal
+                
+                // Only update macros if input provided
+                if !proteinInput.isEmpty {
+                    let currentHKP = (log.protein ?? 0) - log.manualProtein
+                    log.manualProtein = pVal - currentHKP
+                    log.protein = pVal
+                }
+                if !carbsInput.isEmpty {
+                    let currentHKC = (log.carbs ?? 0) - log.manualCarbs
+                    log.manualCarbs = cVal - currentHKC
+                    log.carbs = cVal
+                }
+                if !fatInput.isEmpty {
+                    let currentHKF = (log.fat ?? 0) - log.manualFat
+                    log.manualFat = fVal - currentHKF
+                    log.fat = fVal
+                }
             }
             
-            if pVal != nil { existingLog.protein = pVal }
-            if cVal != nil { existingLog.carbs = cVal }
-            if fVal != nil { existingLog.fat = fVal }
-            
-            if existingLog.goalType == nil { existingLog.goalType = currentGoalType }
+            if log.goalType == nil { log.goalType = currentGoalType }
             
         } else {
+            // New Log (No HealthKit data yet, so everything is manual)
             let newLog = DailyLog(
                 date: logDate,
                 caloriesConsumed: calVal,
@@ -211,6 +232,12 @@ struct ContentView: View {
                 carbs: cVal,
                 fat: fVal
             )
+            // It's all manual since it wasn't fetched
+            newLog.manualCalories = calVal
+            newLog.manualProtein = pVal
+            newLog.manualCarbs = cVal
+            newLog.manualFat = fVal
+            
             modelContext.insert(newLog)
         }
         
@@ -218,29 +245,23 @@ struct ContentView: View {
     }
     
     private func setupOnAppear() {
-            // 1. Request Auth & Fetch
-            healthManager.requestAuthorization()
-            healthManager.fetchAllHealthData()
-            
-            // 2. FORCE SYNC: Check if data is already there and save it immediately
-            if healthManager.caloriesConsumedToday > 0 {
-                updateTodayLog { $0.caloriesConsumed = Int(healthManager.caloriesConsumedToday) }
-            }
-            
-            // Sync Calories Burned (checking > 0 just in case, or allow 0 if that's preferred)
-            if enableCaloriesBurned {
-                updateTodayLog { $0.caloriesBurned = Int(healthManager.caloriesBurnedToday) }
-            }
-            
-            // Sync Macros
-            if healthManager.proteinToday > 0 { updateTodayLog { $0.protein = Int(healthManager.proteinToday) } }
-            if healthManager.carbsToday > 0 { updateTodayLog { $0.carbs = Int(healthManager.carbsToday) } }
-            if healthManager.fatToday > 0 { updateTodayLog { $0.fat = Int(healthManager.fatToday) } }
+        healthManager.requestAuthorization()
+        healthManager.fetchAllHealthData()
+        
+        // Sync logic on load
+        if healthManager.caloriesConsumedToday > 0 {
+            updateTodayLog { $0.caloriesConsumed = Int(healthManager.caloriesConsumedToday) + $0.manualCalories }
         }
+        if enableCaloriesBurned {
+            updateTodayLog { $0.caloriesBurned = Int(healthManager.caloriesBurnedToday) }
+        }
+        if healthManager.proteinToday > 0 { updateTodayLog { $0.protein = Int(healthManager.proteinToday) + $0.manualProtein } }
+        if healthManager.carbsToday > 0 { updateTodayLog { $0.carbs = Int(healthManager.carbsToday) + $0.manualCarbs } }
+        if healthManager.fatToday > 0 { updateTodayLog { $0.fat = Int(healthManager.fatToday) + $0.manualFat } }
+    }
     
     private func updateTodayLog(update: (DailyLog) -> Void) {
         let todayDate = Calendar.current.startOfDay(for: Date())
-        
         if let todayLog = logs.first(where: { $0.date == todayDate }) {
             update(todayLog)
         } else {
@@ -265,7 +286,7 @@ struct ContentView: View {
             VStack(spacing: 5) {
                 Text("\(remaining)")
                     .font(.system(size: 40, weight: .bold))
-                    .foregroundColor(.blue)
+                    .foregroundColor(remaining < 0 ? .red : .blue)
                 Text("Calories Left Today")
                     .font(.caption).foregroundColor(.secondary)
             }
@@ -280,7 +301,16 @@ struct ContentView: View {
         
         return HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(log.date, style: .date).font(.body)
+                HStack {
+                    Text(log.date, style: .date).font(.body)
+                    // --- NEW: O Symbol for Overrides ---
+                    if log.isOverridden {
+                        Image(systemName: "o.circle.fill")
+                            .font(.caption2)
+                            .foregroundColor(.purple)
+                    }
+                }
+                
                 HStack(spacing: 4) {
                     if let w = log.weight {
                         Text("\(w, specifier: "%.1f") kg")
@@ -288,7 +318,6 @@ struct ContentView: View {
                     if let goal = log.goalType {
                         Text("(\(goal))").font(.caption2).padding(2).background(Color.gray.opacity(0.1)).cornerRadius(4)
                     }
-                    
                     ForEach(dailyWorkouts) { w in
                         Text("• \(w.category)").font(.caption2).foregroundColor(.blue)
                     }
