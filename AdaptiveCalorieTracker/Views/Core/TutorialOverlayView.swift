@@ -1,27 +1,56 @@
 import SwiftUI
 
-// MARK: - Tutorial Data Structures
-
-enum SpotlightArea {
-    case topRight
-    case topLeft
-    case center
-    case tab(index: Int)
-    case none
+// MARK: - 1. Identifiers
+enum SpotlightTargetID: String, CaseIterable {
+    case settings
+    case addLog
+    case addWorkout
+    case library
+    case addWeight
 }
 
+enum SpotlightArea: Hashable {
+    case target(SpotlightTargetID) // Precise button target
+    case tab(index: Int)           // Tab bar item
+    case center                    // Fallback
+}
+
+// MARK: - 2. Preference Key & Extension
+struct SpotlightRectsKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+extension View {
+    func spotlightTarget(_ id: SpotlightTargetID) -> some View {
+        self.background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    // FIX: Use .global to get screen-relative coordinates
+                    // This fixes the issue of spotlights appearing too high
+                    key: SpotlightRectsKey.self,
+                    value: [id.rawValue: geo.frame(in: .global)]
+                )
+            }
+        )
+    }
+}
+
+// MARK: - 3. Data Model
 struct TutorialStep {
     let id: Int
     let title: String
     let description: String
     let tabIndex: Int
-    let highlights: [SpotlightArea] // Areas to highlight (e.g. [.topRight, .center])
+    let highlights: [SpotlightArea]
 }
 
-// MARK: - Tutorial Overlay View
-
+// MARK: - 4. Overlay View
 struct TutorialOverlayView: View {
     let step: TutorialStep
+    let spotlightRects: [String: CGRect]
     let onNext: () -> Void
     let onFinish: () -> Void
     let isLastStep: Bool
@@ -29,34 +58,29 @@ struct TutorialOverlayView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // 1. Dark Background with "Holes"
+                // Dimmed Background
                 Color.black.opacity(0.7)
+                    // Create the "Holes"
                     .mask(
                         ZStack {
-                            Rectangle().fill(Color.white) // The solid part
+                            Rectangle().fill(Color.white) // The solid sheet
                             
-                            // Punch holes
+                            // The Cutouts
                             ForEach(0..<step.highlights.count, id: \.self) { i in
-                                spotlightShape(for: step.highlights[i], in: geometry)
-                                    .blendMode(.destinationOut)
+                                highlightShape(for: step.highlights[i], in: geometry)
+                                    .blendMode(.destinationOut) // This punches the hole
                             }
                         }
                     )
-                    .ignoresSafeArea()
-                    .allowsHitTesting(true) // Blocks touches to underlying app
+                    .ignoresSafeArea() // Ensure overlay covers entire screen
+                    .allowsHitTesting(true)
                 
-                // 2. Text & Controls
+                // Instructions Card
                 VStack {
                     Spacer()
-                    
                     VStack(alignment: .leading, spacing: 16) {
-                        Text(step.title)
-                            .font(.title2).bold()
-                            .foregroundColor(.white)
-                        
-                        Text(step.description)
-                            .font(.body)
-                            .foregroundColor(.white.opacity(0.9))
+                        Text(step.title).font(.title2).bold().foregroundColor(.white)
+                        Text(step.description).font(.body).foregroundColor(.white.opacity(0.9))
                         
                         HStack {
                             Spacer()
@@ -79,90 +103,46 @@ struct TutorialOverlayView: View {
                             .cornerRadius(16)
                     )
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 100) // Lift up from bottom tab bar
-                }
-                
-                // 3. Arrows / Indicators (Optional visual flair)
-                ForEach(0..<step.highlights.count, id: \.self) { i in
-                    arrowView(for: step.highlights[i], in: geometry)
+                    .padding(.bottom, 100)
                 }
             }
         }
     }
     
-    
-    // MARK: - Geometry Helpers
-        
-        func spotlightShape(for area: SpotlightArea, in geo: GeometryProxy) -> some View {
-            let spotlightSize: CGFloat = 55
-            let topBarY = geo.safeAreaInsets.top + 22
-            
-            var frame = CGRect.zero
-            
-            switch area {
-            case .topRight:
-                let xPos = geo.size.width - 33
-                frame = CGRect(x: xPos - (spotlightSize / 2), y: topBarY - (spotlightSize / 2), width: spotlightSize, height: spotlightSize)
+    @ViewBuilder
+    func highlightShape(for area: SpotlightArea, in geo: GeometryProxy) -> some View {
+        switch area {
+        case .target(let id):
+            if let rect = spotlightRects[id.rawValue] {
+                // Calculate size based on the target's actual frame
+                let dimension = max(rect.width, rect.height)
+                // Add padding: 10pts if small icon, less if large button
+                let padding: CGFloat = dimension < 50 ? 20 : 10
+                let radius = (dimension / 2) + padding
                 
-            case .topLeft:
-                let xPos: CGFloat = 30
-                frame = CGRect(x: xPos - (spotlightSize / 2), y: topBarY - (spotlightSize / 2), width: spotlightSize, height: spotlightSize)
-                
-            case .center:
-                frame = CGRect(x: 20, y: geo.size.height / 2 - 200, width: geo.size.width - 40, height: 400)
-                
-            case .tab(let index):
-                // Calculate X based on tab count (4 tabs)
-                let tabWidth = geo.size.width / 4
-                let xCenter = (CGFloat(index) * tabWidth) + (tabWidth / 2)
-                
-                // Calculate Y: Tab bar is at bottom, above safe area
-                // Standard tab bar height is ~49. Center is ~25pts above bottom safe area.
-                let yCenter = geo.size.height - geo.safeAreaInsets.bottom - -62
-                
-                frame = CGRect(x: xCenter - (spotlightSize / 2 + 5),
-                               y: yCenter - (spotlightSize / 2 + 5),
-                               width: spotlightSize + 10,
-                               height: spotlightSize + 10)
-                
-            case .none:
-                break
-            }
-            
-            return Circle()
-                .frame(width: frame.width, height: frame.height)
-                .position(x: frame.midX, y: frame.midY)
-        }
-        
-        @ViewBuilder
-        func arrowView(for area: SpotlightArea, in geo: GeometryProxy) -> some View {
-            let topArrowY = geo.safeAreaInsets.top + 50
-            
-            switch area {
-            case .topRight:
-                Image(systemName: "arrow.up.right")
-                    .resizable().frame(width: 50, height: 50).foregroundColor(.white)
-                    .position(x: geo.size.width - 90, y: topArrowY)
-                    
-            case .topLeft:
-                Image(systemName: "arrow.up.left")
-                    .resizable().frame(width: 50, height: 50).foregroundColor(.white)
-                    .position(x: 90, y: topArrowY)
-                    
-            case .tab(let index):
-                // Pointing DOWN at the tab
-                let tabWidth = geo.size.width / 4
-                let xCenter = (CGFloat(index) * tabWidth) + (tabWidth / 2)
-                
-                // Position arrow above the tab bar spotlight
-                let yArrow = geo.size.height - geo.safeAreaInsets.bottom - 45
-                
-                Image(systemName: "arrow.down")
-                    .resizable().frame(width: 35, height: 35).foregroundColor(.white)
-                    .position(x: xCenter, y: yArrow)
-                    
-            default:
+                Circle()
+                    .frame(width: radius * 2, height: radius * 2)
+                    .position(x: rect.midX, y: rect.midY)
+            } else {
                 EmptyView()
             }
+            
+        case .tab(let index):
+            // Dynamic Tab Calculation
+            let tabCount = 4
+            let tabWidth = geo.size.width / CGFloat(tabCount)
+            let xCenter = (CGFloat(index) * tabWidth) + (tabWidth / 2)
+            // Position approx over the icon (adjusted for bottom safe area)
+            let yCenter = geo.size.height - geo.safeAreaInsets.bottom - 25
+            
+            Circle()
+                .frame(width: 60, height: 60)
+                .position(x: xCenter, y: yCenter)
+            
+        case .center:
+            Circle()
+                .frame(width: 300, height: 300)
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
         }
+    }
 }

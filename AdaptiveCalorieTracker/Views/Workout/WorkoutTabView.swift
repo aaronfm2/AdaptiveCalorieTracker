@@ -97,6 +97,7 @@ struct WorkoutTabView: View {
                     Button(action: { showingLibrary = true }) {
                         Image(systemName: "dumbbell")
                     }
+                    .spotlightTarget(.library)
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -107,6 +108,7 @@ struct WorkoutTabView: View {
                         Image(systemName: "plus.circle.fill")
                             .font(.title2)
                     }
+                    .spotlightTarget(.addWorkout)
                 }
             }
             .sheet(isPresented: $showingAddWorkout) {

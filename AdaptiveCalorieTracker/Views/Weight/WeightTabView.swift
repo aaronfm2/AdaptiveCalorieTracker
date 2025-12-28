@@ -49,6 +49,7 @@ struct WeightTrackerView: View {
                 }) {
                     Image(systemName: "plus.circle.fill").font(.title2)
                 }
+                .spotlightTarget(.addWeight)
             }
             .sheet(isPresented: $showingAddWeight) {
                 NavigationStack {

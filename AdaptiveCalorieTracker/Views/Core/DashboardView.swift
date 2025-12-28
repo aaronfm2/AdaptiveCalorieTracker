@@ -53,6 +53,7 @@ struct DashboardView: View {
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
                     }
+                    .spotlightTarget(.settings)
                 }
             }
             .sheet(isPresented: $showingSettings) {

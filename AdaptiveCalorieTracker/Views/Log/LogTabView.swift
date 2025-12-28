@@ -138,6 +138,7 @@ struct ContentView: View {
                             Image(systemName: "plus.circle.fill")
                                 .font(.title2)
                         }
+                        .spotlightTarget(.addLog)
                     }
                 }
             }

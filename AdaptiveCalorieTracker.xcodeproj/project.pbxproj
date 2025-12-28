@@ -35,16 +35,6 @@
 			path = AdaptiveCalorieTracker;
 			sourceTree = "<group>";
 		};
-		69465D7E2EF4CC0C005A3F99 /* AdaptiveCalorieTrackerTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = AdaptiveCalorieTrackerTests;
-			sourceTree = "<group>";
-		};
-		69465D882EF4CC0C005A3F99 /* AdaptiveCalorieTrackerUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = AdaptiveCalorieTrackerUITests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,8 +66,6 @@
 			isa = PBXGroup;
 			children = (
 				69465D6B2EF4CC09005A3F99 /* AdaptiveCalorieTracker */,
-				69465D7E2EF4CC0C005A3F99 /* AdaptiveCalorieTrackerTests */,
-				69465D882EF4CC0C005A3F99 /* AdaptiveCalorieTrackerUITests */,
 				69465D6A2EF4CC09005A3F99 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -130,9 +118,6 @@
 			dependencies = (
 				69465D7D2EF4CC0C005A3F99 /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				69465D7E2EF4CC0C005A3F99 /* AdaptiveCalorieTrackerTests */,
-			);
 			name = AdaptiveCalorieTrackerTests;
 			packageProductDependencies = (
 			);
@@ -152,9 +137,6 @@
 			);
 			dependencies = (
 				69465D872EF4CC0C005A3F99 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				69465D882EF4CC0C005A3F99 /* AdaptiveCalorieTrackerUITests */,
 			);
 			name = AdaptiveCalorieTrackerUITests;
 			packageProductDependencies = (
