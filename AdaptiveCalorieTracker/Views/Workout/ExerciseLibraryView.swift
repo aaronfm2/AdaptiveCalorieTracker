@@ -11,7 +11,7 @@ struct ExerciseLibraryView: View {
     @State private var exerciseToEdit: ExerciseDefinition? // State to track which exercise is being edited
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 if exercises.isEmpty {
                     Text("No exercises in library. Tap + to create one.")
@@ -100,7 +100,7 @@ struct ExerciseDefinitionSheet: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Exercise Details") {
                     TextField("Name (e.g. Bench Press)", text: $name)

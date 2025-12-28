@@ -24,7 +24,7 @@ struct AddWorkoutView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 sessionSection
                 exercisesSection
@@ -446,7 +446,7 @@ struct AddExerciseSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 // 1. Custom Exercise Option
                 Section {
@@ -645,7 +645,7 @@ struct LoadTemplateSheet: View {
     @Environment(\.modelContext) var modelContext
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 if templates.isEmpty {
                     Text("No templates saved yet.")

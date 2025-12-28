@@ -263,7 +263,7 @@ struct EditOverridesSheet: View {
     @State private var editedFat: Int = 0
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("Manual Additions")) {
                     HStack {

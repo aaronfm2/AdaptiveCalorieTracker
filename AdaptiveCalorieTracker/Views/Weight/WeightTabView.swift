@@ -21,7 +21,7 @@ struct WeightTrackerView: View {
     var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ForEach(weights) { entry in
                     HStack {
@@ -51,7 +51,7 @@ struct WeightTrackerView: View {
                 }
             }
             .sheet(isPresented: $showingAddWeight) {
-                NavigationView {
+                NavigationStack {
                     VStack(spacing: 20) {
                         DatePicker("Date & Time", selection: $selectedDate, displayedComponents: [.date, .hourAndMinute])
                             .datePickerStyle(.graphical)

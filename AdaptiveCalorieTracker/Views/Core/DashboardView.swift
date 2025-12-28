@@ -36,7 +36,7 @@ struct DashboardView: View {
     var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     targetProgressCard
@@ -100,7 +100,7 @@ struct DashboardView: View {
     
     // MARK: - UPDATED: Settings Sheet
     private var settingsSheet: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Preferences") {
                     Picker("Unit System", selection: $unitSystem) {
@@ -444,7 +444,7 @@ struct GoalConfigurationView: View {
     var unitLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("Goal Details")) {
                     HStack {

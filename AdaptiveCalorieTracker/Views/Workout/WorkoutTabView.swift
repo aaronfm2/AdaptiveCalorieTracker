@@ -17,7 +17,7 @@ struct WorkoutTabView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 // 1. Calendar View
                 Section {
@@ -333,7 +333,7 @@ struct MuscleSelectionView: View {
     let allMuscles = MuscleGroup.allCases
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 ForEach(MuscleGroup.allCases, id: \.self) { muscle in
                 HStack {

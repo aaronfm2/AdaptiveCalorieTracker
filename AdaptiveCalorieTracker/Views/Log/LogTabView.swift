@@ -81,7 +81,7 @@ struct ContentView: View {
         }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Only show calorie summary if enabled
                 if isCalorieCountingEnabled {
@@ -231,7 +231,7 @@ struct ContentView: View {
     }
     
     private var logSheetContent: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Date & Mode") {
                     DatePicker("Log Date", selection: $selectedLogDate, displayedComponents: .date)
