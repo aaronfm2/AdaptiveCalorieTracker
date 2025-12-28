@@ -11,7 +11,7 @@ struct OnboardingView: View {
     // --- NEW: Calorie Counting Toggle ---
     @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
     
-    // --- NEW: Prediction Method ---
+    // --- Prediction Method (Defaults to 0) ---
     @AppStorage("estimationMethod") private var estimationMethod: Int = 0
     
     @AppStorage("userGender") private var gender: Gender = .male
@@ -62,7 +62,7 @@ struct OnboardingView: View {
                 HStack {
                     if currentStep > 0 {
                         Button("Back") {
-                            hideKeyboard() // Dismiss keyboard when going back
+                            hideKeyboard()
                             currentStep -= 1
                         }
                         .foregroundColor(.secondary)
@@ -70,7 +70,7 @@ struct OnboardingView: View {
                     Spacer()
                     if currentStep < 4 {
                         Button("Next") {
-                            hideKeyboard() // This ensures the number pad closes
+                            hideKeyboard()
                             withAnimation {
                                 if currentStep == 1 { estimateMaintenance() }
                                 currentStep += 1
@@ -171,23 +171,6 @@ struct OnboardingView: View {
                 
                 if isCalorieCountingEnabled {
                     Toggle("Track Calories Burned?", isOn: $trackCaloriesBurned)
-                }
-            }
-            
-            Section("Goal Prediction Logic") {
-                if isCalorieCountingEnabled {
-                    Picker("Method", selection: $estimationMethod) {
-                        Text("30-Day Weight Trend").tag(0)
-                        Text("Avg 7 Day Cal Consumption").tag(1)
-                        Text("Fixed Daily Cal").tag(2)
-                    }
-                    Text("This determines how we will calculate the number of days to achieve your goal.")
-                        .font(.caption).foregroundColor(.secondary)
-                } else {
-                    Text("30-Day Weight Trend")
-                        .foregroundColor(.secondary)
-                    Text("Calorie counting is disabled.")
-                        .font(.caption).foregroundColor(.secondary)
                 }
             }
             
@@ -345,6 +328,9 @@ struct OnboardingView: View {
         storedTargetWeight = storedTargetWeightKg
         storedEnableCaloriesBurned = trackCaloriesBurned
         
+        // Force default estimation method
+        estimationMethod = 0
+        
         if isCalorieCountingEnabled {
             storedMaintenance = Int(maintenanceInput) ?? 2500
             storedDailyGoal = Int(dailyGoalInput) ?? 2000
@@ -356,7 +342,6 @@ struct OnboardingView: View {
     }
 }
 
-// Extension to allow easy keyboard dismissal from any view
 extension View {
     func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
