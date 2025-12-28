@@ -7,10 +7,10 @@ struct WorkoutTabView: View {
     
     @State private var showingAddWorkout = false
     @State private var showingSettings = false
-    @State private var showingLibrary = false // --- NEW STATE ---
+    @State private var showingLibrary = false
     @State private var workoutToEdit: Workout? = nil
     
-    @AppStorage("trackedMuscles") private var trackedMusclesString: String = "Chest,Back,Legs"
+    @AppStorage("trackedMuscles") private var trackedMusclesString: String = "Chest,Back,Legs,Shoulders,Abs,Cardio,Biceps,Triceps"
     
     var trackedMuscles: [String] {
         trackedMusclesString.components(separatedBy: ",").filter { !$0.isEmpty }
@@ -205,7 +205,7 @@ struct WorkoutCalendarView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 10) {
                 ForEach(daysInMonth, id: \.self) { date in
                     if let date = date {
-                        // --- UPDATED LOGIC: Find ALL workouts for this day ---
+                        // Find ALL workouts for this day ---
                         let dailyWorkouts = workouts.filter({ Calendar.current.isDate($0.date, inSameDayAs: date) })
                         let hasWorkout = !dailyWorkouts.isEmpty
                         
@@ -248,7 +248,7 @@ struct WorkoutCalendarView: View {
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
-        // --- UPDATED NAVIGATION ---
+        // --- NAVIGATION ---
         .background(
             NavigationLink(
                 destination: destinationView,
@@ -260,7 +260,7 @@ struct WorkoutCalendarView: View {
         )
     }
     
-    // --- NEW: Computes where to go based on how many workouts are on that day ---
+    // --- Computes where to go based on how many workouts are on that day ---
     @ViewBuilder
     var destinationView: some View {
         if selectedWorkouts.count == 1, let first = selectedWorkouts.first {

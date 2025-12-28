@@ -40,8 +40,8 @@ struct DashboardView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     targetProgressCard
-                    weightTrendCard
                     projectionComparisonCard
+                    weightTrendCard
                     workoutDistributionCard
                 }
                 .padding()
