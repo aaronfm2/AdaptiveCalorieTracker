@@ -60,19 +60,19 @@ struct TutorialOverlayView: View {
             ZStack {
                 // Dimmed Background
                 Color.black.opacity(0.7)
-                    // Create the "Holes"
                     .mask(
                         ZStack {
-                            Rectangle().fill(Color.white) // The solid sheet
+                            Rectangle().fill(Color.white)
                             
                             // The Cutouts
                             ForEach(0..<step.highlights.count, id: \.self) { i in
                                 highlightShape(for: step.highlights[i], in: geometry)
-                                    .blendMode(.destinationOut) // This punches the hole
+                                    .blur(radius: 10)
+                                    .blendMode(.destinationOut)
                             }
                         }
                     )
-                    .ignoresSafeArea() // Ensure overlay covers entire screen
+                    .ignoresSafeArea()
                     .allowsHitTesting(true)
                 
                 // Instructions Card
@@ -114,10 +114,8 @@ struct TutorialOverlayView: View {
         switch area {
         case .target(let id):
             if let rect = spotlightRects[id.rawValue] {
-                // Calculate size based on the target's actual frame
                 let dimension = max(rect.width, rect.height)
-                // Add padding: 10pts if small icon, less if large button
-                let padding: CGFloat = dimension < 50 ? 20 : 10
+                let padding: CGFloat = dimension < 50 ? 40 : 25
                 let radius = (dimension / 2) + padding
                 
                 Circle()
@@ -128,21 +126,24 @@ struct TutorialOverlayView: View {
             }
             
         case .tab(let index):
-            // Dynamic Tab Calculation
             let tabCount = 4
             let tabWidth = geo.size.width / CGFloat(tabCount)
             let xCenter = (CGFloat(index) * tabWidth) + (tabWidth / 2)
-            // Position approx over the icon (adjusted for bottom safe area)
-            let yCenter = geo.size.height - geo.safeAreaInsets.bottom - 25
+            
+            // --- UPDATED: Moved higher ---
+            // Changed from -25 to -50.
+            // This lifts the spotlight up to sit squarely on the icon.
+            let yCenter = geo.size.height - geo.safeAreaInsets.bottom - 50
             
             Circle()
-                .frame(width: 60, height: 60)
+                .frame(width: 85, height: 85)
                 .position(x: xCenter, y: yCenter)
             
         case .center:
             Circle()
-                .frame(width: 300, height: 300)
+                .frame(width: 350, height: 350)
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
         }
     }
 }
+

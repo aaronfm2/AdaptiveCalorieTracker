@@ -1,14 +1,14 @@
 import SwiftUI
 
 struct MainTabView: View {
+    // ... [Keep properties] ...
     @AppStorage("hasSeenAppTutorial") private var hasSeenAppTutorial: Bool = false
     @State private var currentTutorialStepIndex = 0
     @State private var selectedTab = 0
     
-    // State to hold the detected frames of buttons
     @State private var spotlightRects: [String: CGRect] = [:]
     
-    // --- UPDATED STEPS using precise targets ---
+    // ... [Keep tutorialSteps] ...
     private let tutorialSteps: [TutorialStep] = [
         TutorialStep(
             id: 0,
@@ -22,14 +22,14 @@ struct MainTabView: View {
             title: "Settings",
             description: "Tap the Gear icon to configure your goals, dietary preferences, and calculation methods.",
             tabIndex: 0,
-            highlights: [.target(.settings)] // Precise Target
+            highlights: [.target(.settings)]
         ),
         TutorialStep(
             id: 2,
             title: "Apple Health Sync",
             description: "Sync data from Apple Health. If you use other apps (like MyFitnessPal), ensure they are connected to Apple Health.",
             tabIndex: 0,
-            highlights: [.center]
+            highlights: []
         ),
         TutorialStep(
             id: 3,
@@ -43,7 +43,7 @@ struct MainTabView: View {
             title: "Add Entries",
             description: "Use the + button to manually add calories or macros.",
             tabIndex: 1,
-            highlights: [.target(.addLog)] // Precise Target
+            highlights: [.target(.addLog)]
         ),
         TutorialStep(
             id: 5,
@@ -57,7 +57,7 @@ struct MainTabView: View {
             title: "Workout Controls",
             description: "Top Right: Start a new workout.\nTop Left: Manage your Exercise Library.",
             tabIndex: 2,
-            highlights: [.target(.addWorkout), .target(.library)] // Precise Targets
+            highlights: [.target(.addWorkout), .target(.library)]
         ),
         TutorialStep(
             id: 7,
@@ -71,7 +71,7 @@ struct MainTabView: View {
             title: "Log Weight",
             description: "Tap the + button to log today's weight.",
             tabIndex: 3,
-            highlights: [.target(.addWeight)] // Precise Target
+            highlights: [.target(.addWeight)]
         )
     ]
     
@@ -83,11 +83,13 @@ struct MainTabView: View {
                 WorkoutTabView().tabItem { Label("Workouts", systemImage: "figure.strengthtraining.traditional") }.tag(2)
                 WeightTrackerView().tabItem { Label("Weight", systemImage: "scalemass.fill") }.tag(3)
             }
+            // --- FIX 1: Force Bottom Tabs on iPad ---
+            .environment(\.horizontalSizeClass, .compact)
             
             if !hasSeenAppTutorial {
                 TutorialOverlayView(
                     step: tutorialSteps[currentTutorialStepIndex],
-                    spotlightRects: spotlightRects, // Pass the detected frames
+                    spotlightRects: spotlightRects,
                     onNext: {
                         withAnimation {
                             if currentTutorialStepIndex < tutorialSteps.count - 1 {
@@ -102,11 +104,11 @@ struct MainTabView: View {
                     isLastStep: currentTutorialStepIndex == tutorialSteps.count - 1
                 )
                 .zIndex(10)
+                // --- FIX 2: Ignore Safe Area to cover the Tab Bar ---
+                .ignoresSafeArea()
             }
         }
-        // IMPORTANT: Define the coordinate space for the detection
         .coordinateSpace(name: "TutorialSpace")
-        // IMPORTANT: Listen for changes from child views
         .onPreferenceChange(SpotlightRectsKey.self) { prefs in
             self.spotlightRects = prefs
         }
