@@ -2,14 +2,23 @@ import SwiftUI
 
 struct WorkoutDetailView: View {
     let workout: Workout
+    
     @State private var isEditing = false
     
-    // --- NEW: Unit System ---
     @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
-    
+    @AppStorage("isDarkMode") private var isDarkMode: Bool = false
+
+    var appBackgroundColor: Color {
+        isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
+    }
+
+    var cardBackgroundColor: Color {
+        isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
+    }
+
     var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     var distLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "mi" : "km" }
-    
+
     // Helper to group exercises by name while keeping order
     var groupedExercises: [(name: String, sets: [ExerciseEntry])] {
         var groups: [(name: String, sets: [ExerciseEntry])] = []
@@ -22,7 +31,7 @@ struct WorkoutDetailView: View {
         }
         return groups
     }
-    
+
     var body: some View {
         List {
             Section("Summary") {
@@ -47,6 +56,7 @@ struct WorkoutDetailView: View {
                         .foregroundColor(.secondary)
                 }
             }
+            .listRowBackground(cardBackgroundColor)
             
             Section("Exercises") {
                 if workout.exercises.isEmpty {
@@ -109,13 +119,17 @@ struct WorkoutDetailView: View {
                     }
                 }
             }
+            .listRowBackground(cardBackgroundColor)
             
             if !workout.note.isEmpty {
                 Section("Notes") {
                     Text(workout.note)
                 }
+                .listRowBackground(cardBackgroundColor)
             }
         }
+        .scrollContentBackground(.hidden) // Hide system default
+        .background(appBackgroundColor)   // Apply custom background
         .navigationTitle(workout.category)
         .toolbar {
             Button("Edit") {
