@@ -7,6 +7,9 @@ struct AdaptiveCalorieTrackerApp: App {
     
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
     
+    // --- NEW: Dark Mode State ---
+    @AppStorage("isDarkMode") private var isDarkMode: Bool = false
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DailyLog.self,
@@ -22,12 +25,10 @@ struct AdaptiveCalorieTrackerApp: App {
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
             
-            // --- NEW: Call the Seeder here ---
             // We must run this on the MainActor
             Task { @MainActor in
                 DefaultExercises.seed(context: container.mainContext)
             }
-            // --------------------------------
             
             return container
         } catch {
@@ -37,12 +38,15 @@ struct AdaptiveCalorieTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if hasCompletedOnboarding {
-                MainTabView()
-                    .environmentObject(healthManager)
-            } else {
-                OnboardingView(isCompleted: $hasCompletedOnboarding)
+            Group {
+                if hasCompletedOnboarding {
+                    MainTabView()
+                        .environmentObject(healthManager)
+                } else {
+                    OnboardingView(isCompleted: $hasCompletedOnboarding)
+                }
             }
+            .preferredColorScheme(isDarkMode ? .dark : .light)
         }
         .modelContainer(sharedModelContainer)
     }

@@ -5,7 +5,6 @@ import Charts
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     
-    // ... [Keep existing Queries] ...
     @Query(sort: \DailyLog.date, order: .forward) private var logs: [DailyLog]
     @Query(sort: \WeightEntry.date, order: .reverse) private var weights: [WeightEntry]
     @Query(sort: \Workout.date, order: .reverse) private var workouts: [Workout]
@@ -13,7 +12,6 @@ struct DashboardView: View {
     @EnvironmentObject var healthManager: HealthManager
     @State private var viewModel = DashboardViewModel()
     
-    // ... [Keep existing AppStorage] ...
     @AppStorage("dailyCalorieGoal") private var dailyGoal: Int = 2000
     @AppStorage("targetWeight") private var targetWeight: Double = 70.0
     @AppStorage("goalType") private var goalType: String = "Cutting"
@@ -23,17 +21,23 @@ struct DashboardView: View {
     @AppStorage("maintenanceTolerance") private var maintenanceTolerance: Double = 2.0
     @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
     
-    // --- NEW: User Profile ---
     @AppStorage("userGender") private var userGender: Gender = .male
-    
-    // --- NEW: Calorie Counting Toggle ---
     @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
+    
+    // --- Dark Mode State ---
+    @AppStorage("isDarkMode") private var isDarkMode: Bool = false
     
     @State private var showingSettings = false
     @State private var showingReconfigureGoal = false
     @State private var showingMaintenanceInfo = false
 
     var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
+    
+    // --- NEW: Custom "Lighter" Dark Background ---
+    var appBackgroundColor: Color {
+        // Uses a soft dark gray (approx #1C1C1E) instead of pure black
+        isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
+    }
 
     var body: some View {
         NavigationStack {
@@ -46,6 +50,8 @@ struct DashboardView: View {
                 }
                 .padding()
             }
+            // --- UPDATED: Apply the custom background ---
+            .background(appBackgroundColor)
             .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -68,11 +74,9 @@ struct DashboardView: View {
             .alert("About Estimated Maintenance", isPresented: $showingMaintenanceInfo) {
                 Button("OK", role: .cancel) { }
             } message: {
-                //  (Average Calories * (Weight Change (kg) * 7700) / Number of days
                 Text("This is based on your weight change and your calories consumed over the last 30 days. Please note this number should only be used as a guide, the accuracy will be dependant on accuracy of calories submitted and small weight fluctuations can impact this value")
             }
             .onAppear(perform: setupOnAppear)
-            // Add isCalorieCountingEnabled to change observers
             .onChange(of: logs) { _, _ in refreshViewModel() }
             .onChange(of: weights) { _, _ in refreshViewModel() }
             .onChange(of: dailyGoal) { _, _ in refreshViewModel() }
@@ -97,9 +101,6 @@ struct DashboardView: View {
         viewModel.updateMetrics(logs: logs, weights: weights, settings: settings)
     }
     
-    // ... [Keep checkGoalReached, targetProgressCard, projectionComparisonCard, weightTrendCard, workoutDistributionCard, byCategoryColor] ...
-    
-    // MARK: - UPDATED: Settings Sheet
     private var settingsSheet: some View {
         NavigationStack {
             Form {
@@ -110,16 +111,17 @@ struct DashboardView: View {
                         }
                     }
                     
+                    // Dark Mode Toggle
+                    Toggle("Dark Mode", isOn: $isDarkMode)
+                    
                     Toggle("Enable Calorie Counting", isOn: $isCalorieCountingEnabled)
                     
-                    // Moved from Goal Settings
                     if isCalorieCountingEnabled {
                         Toggle("Track Calories Burned", isOn: $enableCaloriesBurned)
                     }
                 }
                 
                 Section("Profile") {
-                    // Configurable Gender
                     Picker("Gender", selection: $userGender) {
                         ForEach(Gender.allCases, id: \.self) { gender in
                             Text(gender.rawValue).tag(gender)
@@ -129,7 +131,6 @@ struct DashboardView: View {
                 
                 if isCalorieCountingEnabled {
                     Section("Current Goal") {
-                        // Read Only Fields
                         HStack {
                             Text("Goal Type")
                             Spacer()
@@ -151,7 +152,6 @@ struct DashboardView: View {
                         
                         Button("Reconfigure Goal") {
                             showingSettings = false
-                            // Small delay to allow sheet to dismiss before presenting next
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                 showingReconfigureGoal = true
                             }
@@ -160,7 +160,6 @@ struct DashboardView: View {
                         .bold()
                     }
                     
-                    // --- RESTORED: Prediction Logic ---
                     Section("Prediction Logic") {
                         if isCalorieCountingEnabled {
                             Picker("Method", selection: $estimationMethod) {
@@ -209,7 +208,6 @@ struct DashboardView: View {
         refreshViewModel()
     }
     
-    // Need to include the components of targetProgressCard that rely on estimatedMaintenance
     private var targetProgressCard: some View {
         let currentWeightKg = weights.first?.weight
         let currentDisplay = currentWeightKg?.toUserWeight(system: unitSystem)
@@ -256,7 +254,6 @@ struct DashboardView: View {
         .background(RoundedRectangle(cornerRadius: 15).fill(Color.orange.opacity(0.1)))
     }
     
-    // ... [Other sections remain unchanged] ...
     private func checkGoalReached(current: Double) -> Bool {
         if goalType == GoalType.cutting.rawValue {
             return current <= targetWeight
@@ -268,7 +265,6 @@ struct DashboardView: View {
         }
     }
     
-    // ... [Re-include projectionComparisonCard etc from original file as they are largely unchanged but depend on viewModel] ...
     private var projectionComparisonCard: some View {
         let currentWeightKg = weights.first?.weight ?? 0
         let currentDisplay = currentWeightKg.toUserWeight(system: unitSystem)
@@ -325,7 +321,6 @@ struct DashboardView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
     }
     
-    // ... [workoutDistributionCard & weightTrendCard & byCategoryColor unchanged] ...
     private var workoutDistributionCard: some View {
         let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
         let recentWorkouts = workouts.filter { $0.date >= thirtyDaysAgo }

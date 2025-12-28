@@ -9,7 +9,6 @@ struct LogDetailView: View {
     @State private var isSyncing = false
     @AppStorage("enableCaloriesBurned") private var enableCaloriesBurned: Bool = true
     
-    // --- NEW: Toggle ---
     @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
     
     @State private var showingEditOverrides = false
@@ -31,7 +30,6 @@ struct LogDetailView: View {
             VStack(spacing: 24) {
                 dateHeader
                 
-                // Only show if enabled
                 if isCalorieCountingEnabled {
                     if log.isOverridden {
                         manualOverrideBanner
@@ -48,12 +46,10 @@ struct LogDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack {
-                    // Edit Button (only if calories enabled, as that's what it edits)
                     if isCalorieCountingEnabled {
                         Button("Edit") { showingEditOverrides = true }
                     }
                     
-                    // Sync Button
                     Button(action: syncHealthData) {
                         if isSyncing {
                             ProgressView()
@@ -159,7 +155,8 @@ struct LogDetailView: View {
             }
         }
         .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
+        // --- FIXED: Use adaptive background for container ---
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemGroupedBackground)))
         .padding(.horizontal)
     }
     
@@ -222,7 +219,8 @@ struct LogDetailView: View {
             }
         }
         .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.blue.opacity(0.05)))
+        // --- FIXED: Use adaptive background ---
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .secondarySystemGroupedBackground)))
         .padding(.horizontal)
     }
     
@@ -256,7 +254,6 @@ struct EditOverridesSheet: View {
     @Bindable var log: DailyLog
     @Environment(\.dismiss) var dismiss
     
-    // 1. Create temporary state to hold edits
     @State private var editedCalories: Int = 0
     @State private var editedProtein: Int = 0
     @State private var editedCarbs: Int = 0
@@ -269,7 +266,6 @@ struct EditOverridesSheet: View {
                     HStack {
                         Text("Calories (+)")
                         Spacer()
-                        // 2. Bind to the local state, not the log directly
                         TextField("0", value: $editedCalories, format: .number)
                             .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                     }
@@ -296,13 +292,11 @@ struct EditOverridesSheet: View {
             }
             .navigationTitle("Edit Manual Entries")
             .toolbar {
-                // 3. Call saveChanges when Done is pressed
                 Button("Done") {
                     saveChanges()
                     dismiss()
                 }
             }
-            // 4. Initialize state with existing values when the sheet appears
             .onAppear {
                 editedCalories = log.manualCalories
                 editedProtein = log.manualProtein
@@ -312,21 +306,17 @@ struct EditOverridesSheet: View {
         }
     }
     
-    // 5. Calculate the difference and update the totals
     private func saveChanges() {
-        // Calculate difference (New Input - Old Value)
         let calDiff = editedCalories - log.manualCalories
         let pDiff = editedProtein - log.manualProtein
         let cDiff = editedCarbs - log.manualCarbs
         let fDiff = editedFat - log.manualFat
         
-        // Update Totals
         log.caloriesConsumed += calDiff
         if let currentP = log.protein { log.protein = currentP + pDiff } else { log.protein = pDiff }
         if let currentC = log.carbs { log.carbs = currentC + cDiff } else { log.carbs = cDiff }
         if let currentF = log.fat { log.fat = currentF + fDiff } else { log.fat = fDiff }
         
-        // Update Manual Values
         log.manualCalories = editedCalories
         log.manualProtein = editedProtein
         log.manualCarbs = editedCarbs
@@ -350,8 +340,9 @@ struct MacroCard: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(Color.white)
+        // --- FIXED: Replaced Color.white with adaptive system background ---
+        .background(Color(uiColor: .tertiarySystemGroupedBackground))
         .cornerRadius(10)
-        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
     }
 }
