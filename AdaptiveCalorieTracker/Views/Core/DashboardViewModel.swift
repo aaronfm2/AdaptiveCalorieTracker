@@ -9,7 +9,6 @@ struct DashboardSettings {
     var maintenanceCalories: Int
     var estimationMethod: Int
     var enableCaloriesBurned: Bool
-    // --- NEW FIELD ---
     var isCalorieCountingEnabled: Bool
 }
 
@@ -21,12 +20,22 @@ struct ProjectionPoint: Identifiable {
     let method: String
 }
 
+// --- NEW: Weight Change Metric Struct ---
+struct WeightChangeMetric: Identifiable {
+    let id = UUID()
+    let period: String
+    let value: Double?
+}
+
 @Observable
 class DashboardViewModel {
     // MARK: - Output State
     var daysRemaining: Int?
     var estimatedMaintenance: Int?
     var projectionPoints: [ProjectionPoint] = []
+    
+    // --- NEW: Weight Change Metrics ---
+    var weightChangeMetrics: [WeightChangeMetric] = []
     
     var logicDescription: String = ""
     var progressWarningMessage: String = ""
@@ -64,9 +73,54 @@ class DashboardViewModel {
             logs: logs,
             settings: settings
         )
+        
+        // 4. Calculate Weight Changes (7, 30, 90, All Time)
+        calculateWeightChanges(weights: weights)
     }
     
     // MARK: - Internal Logic
+    
+    private func calculateWeightChanges(weights: [WeightEntry]) {
+        // weights are expected to be sorted reverse (newest first)
+        guard let latestEntry = weights.first else {
+            self.weightChangeMetrics = []
+            return
+        }
+        
+        let currentWeight = latestEntry.weight
+        let today = Date()
+        var metrics: [WeightChangeMetric] = []
+        
+        let periods = [7, 30, 90]
+        
+        for days in periods {
+            if let targetDate = Calendar.current.date(byAdding: .day, value: -days, to: today) {
+                // Find the first entry that is ON or BEFORE the target date.
+                // Since the list is Newest -> Oldest, this gives us the most recent entry relative to that past date.
+                if let pastEntry = weights.first(where: { $0.date <= targetDate }) {
+                    let diff = currentWeight - pastEntry.weight
+                    metrics.append(WeightChangeMetric(period: "\(days) Days", value: diff))
+                }
+                // --- UPDATED LOGIC: Fallback to oldest available entry if history is short ---
+                else if let oldestEntry = weights.last {
+                    let diff = currentWeight - oldestEntry.weight
+                    metrics.append(WeightChangeMetric(period: "\(days) Days", value: diff))
+                } else {
+                    metrics.append(WeightChangeMetric(period: "\(days) Days", value: nil))
+                }
+            }
+        }
+        
+        // All Time Change (Compare to the very last entry in the list, which is the oldest)
+        if let firstEntry = weights.last {
+            let diff = currentWeight - firstEntry.weight
+            metrics.append(WeightChangeMetric(period: "All Time", value: diff))
+        } else {
+            metrics.append(WeightChangeMetric(period: "All Time", value: nil))
+        }
+        
+        self.weightChangeMetrics = metrics
+    }
     
     private func updateLogicDescription(method: Int) {
         switch method {

@@ -33,7 +33,7 @@ struct DashboardView: View {
 
     var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     
-    // --- NEW: Custom "Lighter" Dark Background ---
+    // --- Custom "Lighter" Dark Background ---
     var appBackgroundColor: Color {
         // Uses a soft dark gray (approx #1C1C1E) instead of pure black
         isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
@@ -44,13 +44,13 @@ struct DashboardView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     targetProgressCard
+                    weightChangeCard
                     projectionComparisonCard
                     weightTrendCard
                     workoutDistributionCard
                 }
                 .padding()
             }
-            // --- UPDATED: Apply the custom background ---
             .background(appBackgroundColor)
             .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.inline)
@@ -206,6 +206,69 @@ struct DashboardView: View {
             modelContext.insert(newItem)
         }
         refreshViewModel()
+    }
+    
+    // --- WEIGHT CHANGE CARD ---
+    private var weightChangeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Weight Change").font(.headline)
+            
+            // Grid Layout
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                // Iterates over the array from ViewModel. Requires WeightChangeMetric to be in scope.
+                ForEach(viewModel.weightChangeMetrics) { metric in
+                    weightChangeCell(for: metric)
+                }
+            }
+        }
+        .padding()
+        // Outer card background
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
+    }
+    
+    // Helper function used by weightChangeCard to fix compiler complexity issues
+    private func weightChangeCell(for metric: WeightChangeMetric) -> some View {
+        VStack(spacing: 6) {
+            Text(metric.period)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+            
+            if let val = metric.value {
+                let converted = val.toUserWeight(system: unitSystem)
+                
+                HStack(spacing: 4) {
+                    // Value
+                    HStack(spacing: 0) {
+                        Text(val > 0 ? "+" : "")
+                        Text("\(converted, specifier: "%.1f")")
+                        Text(" \(weightLabel)")
+                    }
+                    .foregroundColor(.primary) // Neutral text color
+                    
+                    // Arrow Indicator
+                    if val > 0 {
+                        Image(systemName: "arrow.up")
+                            .foregroundColor(.green)
+                            .font(.caption).bold()
+                    } else if val < 0 {
+                        Image(systemName: "arrow.down")
+                            .foregroundColor(.red)
+                            .font(.caption).bold()
+                    }
+                }
+                .font(.title3)
+                .fontWeight(.bold)
+            } else {
+                Text("--")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.1)))
     }
     
     private var targetProgressCard: some View {
