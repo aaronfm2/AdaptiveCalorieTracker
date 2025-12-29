@@ -27,6 +27,7 @@ struct WeightTrackerView: View {
     }
     
     @State private var showingAddWeight = false
+    @State private var showingStats = false // <--- NEW STATE
     @State private var newWeight: String = ""
     @State private var selectedDate: Date = Date()
     @FocusState private var isInputFocused: Bool
@@ -48,7 +49,6 @@ struct WeightTrackerView: View {
                             // 1. Journey Progress Card
                             JourneyProgressCard(
                                 currentKg: current.weight,
-                                // Use GoalPeriod start weight if available, otherwise fallback to oldest weight
                                 startKg: activeGoalPeriods.first?.startWeight ?? weights.last?.weight ?? current.weight,
                                 targetKg: targetWeight,
                                 goalType: currentGoalType,
@@ -65,7 +65,7 @@ struct WeightTrackerView: View {
                     .background(appBackgroundColor)
                 }
                 
-                // MARK: - Weight List with Goal Labels
+                // MARK: - Weight List
                 List {
                     ForEach(weights) { entry in
                         VStack(alignment: .leading, spacing: 6) {
@@ -83,7 +83,7 @@ struct WeightTrackerView: View {
                                     .font(.title3)
                             }
                             
-                            // 2. Goal Change Labels (Logic Updated)
+                            // 2. Goal Change Labels
                             let events = getGoalEvents(for: entry.date)
                             if !events.isEmpty {
                                 HStack(spacing: 6) {
@@ -111,16 +111,25 @@ struct WeightTrackerView: View {
             }
             .navigationTitle("Weight History")
             .toolbar {
-                Button(action: {
-                    selectedDate = Date()
-                    newWeight = ""
-                    showingAddWeight = true
-                }) {
-                    Image(systemName: "plus.circle.fill").font(.title2)
+                // --- NEW: Stats Button in Top Left ---
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: { showingStats = true }) {
+                        Image(systemName: "chart.pie.fill") // Icon for stats
+                            .font(.body)
+                    }
                 }
-                .spotlightTarget(.addWeight)
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        selectedDate = Date()
+                        newWeight = ""
+                        showingAddWeight = true
+                    }) {
+                        Image(systemName: "plus.circle.fill").font(.title2)
+                    }
+                    .spotlightTarget(.addWeight)
+                }
             }
-            // MARK: - Add Weight Sheet
             .sheet(isPresented: $showingAddWeight) {
                 NavigationStack {
                     Form {
@@ -160,19 +169,18 @@ struct WeightTrackerView: View {
                 }
                 .presentationDetents([.medium])
             }
+            // --- NEW: Stats Sheet ---
+            .sheet(isPresented: $showingStats) {
+                WeightStatsView()
+            }
         }
     }
 
     // MARK: - Logic
     
-    /// Returns a list of strings describing goal changes for a specific day.
-    /// Filters out transient changes to prevent duplicate labels on the same day.
     private func getGoalEvents(for date: Date) -> [String] {
         var events: [String] = []
         
-        // 1. Identify the 'Outgoing' Goal
-        // We look for a period that ended on this day BUT started on a different day.
-        // This effectively ignores any goals that were created and deleted on the same day (reconfigurations).
         if let significantEnd = allGoalPeriods.first(where: { p in
             guard let end = p.endDate else { return false }
             return Calendar.current.isDate(end, inSameDayAs: date) &&
@@ -181,9 +189,6 @@ struct WeightTrackerView: View {
             events.append("\(significantEnd.goalType) Ended")
         }
         
-        // 2. Identify the 'Incoming' Goal
-        // We look for the LATEST period that started on this day.
-        // Since `allGoalPeriods` is sorted by `startDate` DESC, the first match is the most recent one.
         if let latestStart = allGoalPeriods.first(where: { Calendar.current.isDate($0.startDate, inSameDayAs: date) }) {
              events.append("\(latestStart.goalType) Started")
         }
@@ -207,7 +212,6 @@ struct WeightTrackerView: View {
         }
     }
 }
-
 // MARK: - Feature Views
 
 struct JourneyProgressCard: View {
