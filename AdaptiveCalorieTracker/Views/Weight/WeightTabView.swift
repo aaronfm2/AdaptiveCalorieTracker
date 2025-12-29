@@ -5,6 +5,9 @@ struct WeightTrackerView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \WeightEntry.date, order: .reverse) private var weights: [WeightEntry]
     
+    // Fetch the active goal period to get the true "Start Weight" for the current goal
+    @Query(filter: #Predicate<GoalPeriod> { $0.endDate == nil }) private var activeGoalPeriods: [GoalPeriod]
+    
     @AppStorage("goalType") private var currentGoalType: String = GoalType.cutting.rawValue
     @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
     @AppStorage("targetWeight") private var targetWeight: Double = 70.0 // Stored in KG
@@ -42,7 +45,8 @@ struct WeightTrackerView: View {
                             // 1. Journey Progress Card
                             JourneyProgressCard(
                                 currentKg: current.weight,
-                                startKg: weights.last?.weight ?? current.weight,
+                                // Use GoalPeriod start weight if available, otherwise fallback to oldest weight
+                                startKg: activeGoalPeriods.first?.startWeight ?? weights.last?.weight ?? current.weight,
                                 targetKg: targetWeight,
                                 goalType: currentGoalType,
                                 unitSystem: unitSystem,
@@ -176,6 +180,11 @@ struct JourneyProgressCard: View {
         return String(format: "%.1f", val)
     }
     
+    var displayStart: String {
+        let val = startKg.toUserWeight(system: unitSystem)
+        return String(format: "%.1f", val)
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -200,13 +209,25 @@ struct JourneyProgressCard: View {
             }
             .frame(height: 8)
             
-            HStack {
+            HStack(alignment: .bottom) {
                 Text("\(Int(progress * 100))%")
                     .font(.headline)
                 Spacer()
-                Text("Goal: \(displayTarget)")
+                
+                Grid(alignment: .trailing, horizontalSpacing: 4, verticalSpacing: 0) {
+                    GridRow {
+                        Text("Start:")
+                        Text(displayStart)
+                    }
+                    .font(.caption2)
+                    
+                    GridRow {
+                        Text("Goal:")
+                        Text(displayTarget)
+                    }
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                }
+                .foregroundColor(.secondary)
             }
         }
         .padding(12)
