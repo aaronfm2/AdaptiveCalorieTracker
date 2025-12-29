@@ -27,7 +27,8 @@ struct WeightTrackerView: View {
     }
     
     @State private var showingAddWeight = false
-    @State private var showingStats = false // <--- NEW STATE
+    @State private var showingStats = false
+    @State private var showingReconfigureGoal = false
     @State private var newWeight: String = ""
     @State private var selectedDate: Date = Date()
     @FocusState private var isInputFocused: Bool
@@ -53,7 +54,8 @@ struct WeightTrackerView: View {
                                 targetKg: targetWeight,
                                 goalType: currentGoalType,
                                 unitSystem: unitSystem,
-                                cardColor: cardBackgroundColor
+                                cardColor: cardBackgroundColor,
+                                onEdit: { showingReconfigureGoal = true }
                             )
                             
                             // 2. Streak Card
@@ -111,10 +113,9 @@ struct WeightTrackerView: View {
             }
             .navigationTitle("Weight History")
             .toolbar {
-                // --- NEW: Stats Button in Top Left ---
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showingStats = true }) {
-                        Image(systemName: "chart.pie.fill") // Icon for stats
+                        Image(systemName: "chart.bar.fill")
                             .font(.body)
                     }
                 }
@@ -169,9 +170,18 @@ struct WeightTrackerView: View {
                 }
                 .presentationDetents([.medium])
             }
-            // --- NEW: Stats Sheet ---
             .sheet(isPresented: $showingStats) {
                 WeightStatsView()
+            }
+            // --- Reconfigure Goal Sheet ---
+            .sheet(isPresented: $showingReconfigureGoal) {
+                // Reusing GoalConfigurationView from DashboardView.swift
+                // appEstimatedMaintenance is nil here as we don't have the dashboard VM,
+                // but the view handles nil by defaulting to formula/manual.
+                GoalConfigurationView(
+                    appEstimatedMaintenance: nil,
+                    latestWeightKg: weights.first?.weight
+                )
             }
         }
     }
@@ -212,6 +222,7 @@ struct WeightTrackerView: View {
         }
     }
 }
+
 // MARK: - Feature Views
 
 struct JourneyProgressCard: View {
@@ -221,6 +232,7 @@ struct JourneyProgressCard: View {
     let goalType: String
     let unitSystem: String
     let cardColor: Color
+    var onEdit: () -> Void
     
     var progress: Double {
         let totalDiff = abs(targetKg - startKg)
@@ -248,6 +260,15 @@ struct JourneyProgressCard: View {
                     .font(.caption)
                     .fontWeight(.bold)
                     .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                // --- NEW: Settings Cog ---
+                Button(action: onEdit) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
             
             Spacer()
@@ -285,7 +306,7 @@ struct JourneyProgressCard: View {
             }
         }
         .padding(12)
-        .frame(width: 160, height: 110)
+        .frame(width: 170, height: 110)
         .background(cardColor)
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
