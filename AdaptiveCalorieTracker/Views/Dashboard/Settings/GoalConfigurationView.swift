@@ -6,17 +6,14 @@ struct GoalConfigurationView: View {
     @Environment(\.modelContext) private var modelContext
     @FocusState private var isInputFocused: Bool
     
+    // --- CLOUD SYNC: Injected Profile ---
+    var profile: UserProfile
+    
     // Properties passed in
     let appEstimatedMaintenance: Int?
     let latestWeightKg: Double?
     
-    @AppStorage("userGender") private var userGender: Gender = .male
-    @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
-    
-    // --- NEW APP STORAGE ---
-    @AppStorage("maintenanceTolerance") private var maintenanceTolerance: Double = 2.0
-    @AppStorage("goalType") private var storedGoalType: String = GoalType.cutting.rawValue
-    
+    // --- Local State (Initialized from Profile) ---
     @State private var targetWeight: Double? = nil
     @State private var targetDate: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date())!
     
@@ -27,19 +24,21 @@ struct GoalConfigurationView: View {
     @State private var dailyGoal: Int = 0
     @State private var calculatedDeficit: Int = 0
     
-    // --- CHANGED: Explicit Selection State ---
     @State private var selectedGoalType: GoalType = .maintenance
+    @State private var localMaintenanceTolerance: Double = 2.0
     
     private var dataManager: DataManager {
         DataManager(modelContext: modelContext)
     }
     
-    var unitLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
+    // Helpers reading from Profile
+    var unitLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
+    var userGender: Gender { Gender(rawValue: profile.gender) ?? .male }
     
-    // --- NEW: Validation Logic ---
+    // --- Validation Logic ---
     var validationError: String? {
         guard let t = targetWeight, let c = latestWeightKg else { return nil }
-        let tKgVal = t.toStoredWeight(system: unitSystem)
+        let tKgVal = t.toStoredWeight(system: profile.unitSystem)
         
         if selectedGoalType == .cutting && tKgVal >= c { return "Target must be less than current." }
         if selectedGoalType == .bulking && tKgVal <= c { return "Target must be greater than current." }
@@ -49,7 +48,7 @@ struct GoalConfigurationView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // --- NEW SECTION: Goal Type ---
+                // --- Goal Type Section ---
                 Section(header: Text("Goal Configuration")) {
                     Picker("Goal Type", selection: $selectedGoalType) {
                         ForEach(GoalType.allCases, id: \.self) { type in
@@ -63,7 +62,7 @@ struct GoalConfigurationView: View {
                         Text("Current Weight")
                         Spacer()
                         if let w = latestWeightKg {
-                            Text("\(w.toUserWeight(system: unitSystem), specifier: "%.1f") \(unitLabel)")
+                            Text("\(w.toUserWeight(system: profile.unitSystem), specifier: "%.1f") \(unitLabel)")
                                 .foregroundColor(.secondary)
                         } else {
                             Text("No Data").foregroundColor(.red)
@@ -99,8 +98,8 @@ struct GoalConfigurationView: View {
                             Text("Tolerance (+/-)")
                             Spacer()
                             TextField("2.0", value: Binding(
-                                get: { maintenanceTolerance.toUserWeight(system: unitSystem) },
-                                set: { maintenanceTolerance = $0.toStoredWeight(system: unitSystem) }
+                                get: { localMaintenanceTolerance.toUserWeight(system: profile.unitSystem) },
+                                set: { localMaintenanceTolerance = $0.toStoredWeight(system: profile.unitSystem) }
                             ), format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
@@ -111,6 +110,7 @@ struct GoalConfigurationView: View {
                     }
                 }
                 
+                // --- Maintenance Calorie Source ---
                 Section(header: Text("Maintenance Calorie Source")) {
                     Picker("Source", selection: $maintenanceSource) {
                         Text("Formula").tag(0)
@@ -141,6 +141,7 @@ struct GoalConfigurationView: View {
                     }
                 }
                 
+                // --- Results ---
                 Section(header: Text("Results")) {
                     HStack {
                         Text("Daily Goal")
@@ -162,7 +163,6 @@ struct GoalConfigurationView: View {
                         save()
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
-                    // Disable if validation fails, goal is invalid, or maintenance source incomplete
                     .disabled(
                         (selectedGoalType != .maintenance && (targetWeight == nil || validationError != nil)) ||
                         latestWeightKg == nil ||
@@ -181,17 +181,31 @@ struct GoalConfigurationView: View {
                 }
             }
             .onAppear {
-                // Initialize state from AppStorage or defaults
-                if let saved = GoalType(rawValue: storedGoalType) {
-                    selectedGoalType = saved
-                }
-                
-                if appEstimatedMaintenance != nil {
-                    maintenanceSource = 1
-                }
-                recalculate()
+                loadFromProfile()
             }
         }
+    }
+    
+    private func loadFromProfile() {
+        // Initialize local state from the injected Profile (SwiftData)
+        if let savedType = GoalType(rawValue: profile.goalType) {
+            selectedGoalType = savedType
+        }
+        
+        // Load existing maintenance tolerance
+        localMaintenanceTolerance = profile.maintenanceTolerance
+        
+        // Pre-fill target weight if it exists, converted to user units
+        if profile.targetWeight > 0 {
+            targetWeight = profile.targetWeight.toUserWeight(system: profile.unitSystem)
+        }
+        
+        // Default maintenance source logic
+        if appEstimatedMaintenance != nil {
+            maintenanceSource = 1
+        }
+        
+        recalculate()
     }
     
     private func recalculate() {
@@ -223,7 +237,7 @@ struct GoalConfigurationView: View {
             return
         }
         
-        let tWeightKg = tWeightUser.toStoredWeight(system: unitSystem)
+        let tWeightKg = tWeightUser.toStoredWeight(system: profile.unitSystem)
         
         let today = Calendar.current.startOfDay(for: Date())
         let target = Calendar.current.startOfDay(for: targetDate)
@@ -251,14 +265,18 @@ struct GoalConfigurationView: View {
             tWeightStored = latestWeightKg ?? 0.0
         } else {
             guard let t = targetWeight else { return }
-            tWeightStored = t.toStoredWeight(system: unitSystem)
+            tWeightStored = t.toStoredWeight(system: profile.unitSystem)
         }
         
-        UserDefaults.standard.set(tWeightStored, forKey: "targetWeight")
-        UserDefaults.standard.set(dailyGoal, forKey: "dailyCalorieGoal")
-        UserDefaults.standard.set(selectedGoalType.rawValue, forKey: "goalType")
-        UserDefaults.standard.set(maintenanceDisplay, forKey: "maintenanceCalories")
+        // --- CLOUD SYNC: Update Profile ---
+        // Instead of UserDefaults, we update the SwiftData object which syncs automatically.
+        profile.targetWeight = tWeightStored
+        profile.dailyCalorieGoal = dailyGoal
+        profile.goalType = selectedGoalType.rawValue
+        profile.maintenanceCalories = maintenanceDisplay
+        profile.maintenanceTolerance = localMaintenanceTolerance
         
+        // We also create a GoalPeriod record for historical tracking
         let startW = latestWeightKg ?? 0.0
         
         dataManager.startNewGoalPeriod(
