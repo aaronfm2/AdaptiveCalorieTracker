@@ -4,7 +4,11 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \DailyLog.date, order: .reverse) private var logs: [DailyLog]
+    
+    // Fetch workouts to link them to logs
     @Query(sort: \Workout.date, order: .reverse) private var workouts: [Workout]
+    
+    // Fetch Weight Entries to find the starting date
     @Query(sort: \WeightEntry.date, order: .forward) private var weightEntries: [WeightEntry]
     
     @EnvironmentObject var healthManager: HealthManager
@@ -14,7 +18,11 @@ struct ContentView: View {
     @AppStorage("enableCaloriesBurned") private var enableCaloriesBurned: Bool = true
     @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
     @AppStorage("isDarkMode") private var isDarkMode: Bool = true
+    
+    // Apple Health Toggle
+    @AppStorage("enableHealthKitSync") private var enableHealthKitSync: Bool = true
 
+    // MARK: - Color Palette
     var appBackgroundColor: Color {
         isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
     }
@@ -27,7 +35,8 @@ struct ContentView: View {
     @State private var showingLogSheet = false
     @State private var selectedLogDate = Date()
     @State private var inputMode = 0
-    @State private var showingInfoAlert = false
+    @State private var showingInfoSheet = false
+
     @State private var isRefreshingHistory = false
     
     // Inputs
@@ -86,7 +95,7 @@ struct ContentView: View {
                                 NavigationLink(destination: LogDetailView(
                                     log: log,
                                     workouts: getWorkouts(for: log.date),
-                                    weightEntry: getWeightEntry(for: log.date) // --- NEW: Pass Weight Entry ---
+                                    weightEntry: getWeightEntry(for: log.date)
                                 )) {
                                     logRow(for: log)
                                 }
@@ -106,21 +115,23 @@ struct ContentView: View {
             .navigationTitle("Daily Logs")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { showingInfoAlert = true }) {
+                    Button(action: { showingInfoSheet = true }) {
                         Image(systemName: "info.circle")
                     }
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
-                        Button(action: refreshLast365Days) {
-                            if isRefreshingHistory {
-                                ProgressView()
-                            } else {
-                                Image(systemName: "arrow.clockwise")
+                        if enableHealthKitSync {
+                            Button(action: refreshLast365Days) {
+                                if isRefreshingHistory {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                }
                             }
+                            .disabled(isRefreshingHistory)
                         }
-                        .disabled(isRefreshingHistory)
                         
                         Button(action: {
                             selectedLogDate = Date()
@@ -141,32 +152,33 @@ struct ContentView: View {
             .sheet(isPresented: $showingLogSheet) {
                 logSheetContent
             }
-            .alert("Apple Health Sync", isPresented: $showingInfoAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("This data is automatically synced with Apple Health. Manual entries are added ON TOP of HealthKit data.")
+            // --- UPDATED: Use Sheet instead of Alert for Info ---
+            .sheet(isPresented: $showingInfoSheet) {
+                AppleHealthInfoSheet()
             }
             .onAppear(perform: setupOnAppear)
             .onChange(of: healthManager.caloriesBurnedToday) { _, newValue in
-                updateTodayLog { $0.caloriesBurned = Int(newValue) }
+                if enableHealthKitSync {
+                    updateTodayLog { $0.caloriesBurned = Int(newValue) }
+                }
             }
             .onChange(of: healthManager.caloriesConsumedToday) { _, newValue in
-                if newValue > 0 {
+                if enableHealthKitSync && newValue > 0 {
                     updateTodayLog { $0.caloriesConsumed = Int(newValue) + $0.manualCalories }
                 }
             }
             .onChange(of: healthManager.proteinToday) { _, newValue in
-                if newValue > 0 {
+                if enableHealthKitSync && newValue > 0 {
                     updateTodayLog { $0.protein = Int(newValue) + $0.manualProtein }
                 }
             }
             .onChange(of: healthManager.carbsToday) { _, newValue in
-                if newValue > 0 {
+                if enableHealthKitSync && newValue > 0 {
                     updateTodayLog { $0.carbs = Int(newValue) + $0.manualCarbs }
                 }
             }
             .onChange(of: healthManager.fatToday) { _, newValue in
-                if newValue > 0 {
+                if enableHealthKitSync && newValue > 0 {
                     updateTodayLog { $0.fat = Int(newValue) + $0.manualFat }
                 }
             }
@@ -175,24 +187,8 @@ struct ContentView: View {
 
     // MARK: - Helper Methods
     
-    private func getWorkouts(for date: Date) -> [Workout] {
-        workouts.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
-    }
-    
-    // --- NEW: Helper to find latest weight entry for a day ---
-    private func getWeightEntry(for date: Date) -> WeightEntry? {
-        // Filter entries for the specific day
-        let dayEntries = weightEntries.filter {
-            Calendar.current.isDate($0.date, inSameDayAs: date)
-        }
-        // Return the last one (latest in the day if multiple exist)
-        // Since weightEntries is sorted by .forward, last is latest
-        return dayEntries.last
-    }
-
-    // ... (rest of the file remains largely unchanged) ...
-    
     private func refreshLast365Days() {
+        guard enableHealthKitSync else { return }
         isRefreshingHistory = true
         let firstWeightDate = weightEntries.first?.date
         
@@ -235,6 +231,17 @@ struct ContentView: View {
                 withAnimation { isRefreshingHistory = false }
             }
         }
+    }
+    
+    private func getWorkouts(for date: Date) -> [Workout] {
+        workouts.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
+    }
+    
+    private func getWeightEntry(for date: Date) -> WeightEntry? {
+        let dayEntries = weightEntries.filter {
+            Calendar.current.isDate($0.date, inSameDayAs: date)
+        }
+        return dayEntries.last
     }
     
     private var logSheetContent: some View {
@@ -304,100 +311,102 @@ struct ContentView: View {
     }
 
     private func saveLog() {
-            let logDate = Calendar.current.startOfDay(for: selectedLogDate)
-            let calVal = Int(caloriesInput) ?? 0
-            let pVal = Int(proteinInput) ?? 0
-            let cVal = Int(carbsInput) ?? 0
-            let fVal = Int(fatInput) ?? 0
-            
-            let dayWeights = weightEntries.filter {
-                Calendar.current.isDate($0.date, inSameDayAs: logDate)
-            }
-            let latestWeight = dayWeights.sorted(by: { $0.date < $1.date }).last?.weight
-            
-            let existingLog = logs.first(where: { $0.date == logDate })
-            
-            if let log = existingLog {
-                if let w = latestWeight {
-                    log.weight = w
-                }
-                
-                if inputMode == 0 {
-                    log.manualCalories += calVal
-                    log.caloriesConsumed += calVal
-                    log.manualProtein += pVal
-                    log.protein = (log.protein ?? 0) + pVal
-                    log.manualCarbs += cVal
-                    log.carbs = (log.carbs ?? 0) + cVal
-                    log.manualFat += fVal
-                    log.fat = (log.fat ?? 0) + fVal
-                } else {
-                    let currentHKCalories = log.caloriesConsumed - log.manualCalories
-                    log.manualCalories = calVal - currentHKCalories
-                    log.caloriesConsumed = calVal
-                    
-                    if !proteinInput.isEmpty {
-                        let currentHKP = (log.protein ?? 0) - log.manualProtein
-                        log.manualProtein = pVal - currentHKP
-                        log.protein = pVal
-                    }
-                    if !carbsInput.isEmpty {
-                        let currentHKC = (log.carbs ?? 0) - log.manualCarbs
-                        log.manualCarbs = cVal - currentHKC
-                        log.carbs = cVal
-                    }
-                    if !fatInput.isEmpty {
-                        let currentHKF = (log.fat ?? 0) - log.manualFat
-                        log.manualFat = fVal - currentHKF
-                        log.fat = fVal
-                    }
-                }
-                if log.goalType == nil { log.goalType = currentGoalType }
-            } else {
-                let newLog = DailyLog(
-                    date: logDate,
-                    weight: latestWeight,
-                    caloriesConsumed: calVal,
-                    goalType: currentGoalType,
-                    protein: pVal,
-                    carbs: cVal,
-                    fat: fVal
-                )
-                newLog.manualCalories = calVal
-                newLog.manualProtein = pVal
-                newLog.manualCarbs = cVal
-                newLog.manualFat = fVal
-                modelContext.insert(newLog)
-            }
-            showingLogSheet = false
+        let logDate = Calendar.current.startOfDay(for: selectedLogDate)
+        let calVal = Int(caloriesInput) ?? 0
+        let pVal = Int(proteinInput) ?? 0
+        let cVal = Int(carbsInput) ?? 0
+        let fVal = Int(fatInput) ?? 0
+        
+        let dayWeights = weightEntries.filter {
+            Calendar.current.isDate($0.date, inSameDayAs: logDate)
         }
+        let latestWeight = dayWeights.sorted(by: { $0.date < $1.date }).last?.weight
+        
+        let existingLog = logs.first(where: { $0.date == logDate })
+        
+        if let log = existingLog {
+            if let w = latestWeight {
+                log.weight = w
+            }
+            
+            if inputMode == 0 {
+                log.manualCalories += calVal
+                log.caloriesConsumed += calVal
+                log.manualProtein += pVal
+                log.protein = (log.protein ?? 0) + pVal
+                log.manualCarbs += cVal
+                log.carbs = (log.carbs ?? 0) + cVal
+                log.manualFat += fVal
+                log.fat = (log.fat ?? 0) + fVal
+            } else {
+                let currentHKCalories = log.caloriesConsumed - log.manualCalories
+                log.manualCalories = calVal - currentHKCalories
+                log.caloriesConsumed = calVal
+                
+                if !proteinInput.isEmpty {
+                    let currentHKP = (log.protein ?? 0) - log.manualProtein
+                    log.manualProtein = pVal - currentHKP
+                    log.protein = pVal
+                }
+                if !carbsInput.isEmpty {
+                    let currentHKC = (log.carbs ?? 0) - log.manualCarbs
+                    log.manualCarbs = cVal - currentHKC
+                    log.carbs = cVal
+                }
+                if !fatInput.isEmpty {
+                    let currentHKF = (log.fat ?? 0) - log.manualFat
+                    log.manualFat = fVal - currentHKF
+                    log.fat = fVal
+                }
+            }
+            if log.goalType == nil { log.goalType = currentGoalType }
+        } else {
+            let newLog = DailyLog(
+                date: logDate,
+                weight: latestWeight,
+                caloriesConsumed: calVal,
+                goalType: currentGoalType,
+                protein: pVal,
+                carbs: cVal,
+                fat: fVal
+            )
+            newLog.manualCalories = calVal
+            newLog.manualProtein = pVal
+            newLog.manualCarbs = cVal
+            newLog.manualFat = fVal
+            modelContext.insert(newLog)
+        }
+        showingLogSheet = false
+    }
     
     private func setupOnAppear() {
+        if enableHealthKitSync {
             healthManager.requestAuthorization()
             healthManager.fetchAllHealthData()
-            
-            for log in logs {
-                let dayWeights = weightEntries.filter {
-                    Calendar.current.isDate($0.date, inSameDayAs: log.date)
-                }
-                
-                if let latestEntry = dayWeights.sorted(by: { $0.date < $1.date }).last {
-                    if log.weight != latestEntry.weight {
-                        log.weight = latestEntry.weight
-                    }
-                }
-            }
-
-            if healthManager.caloriesConsumedToday > 0 {
-                updateTodayLog { $0.caloriesConsumed = Int(healthManager.caloriesConsumedToday) + $0.manualCalories }
-            }
-            if enableCaloriesBurned {
-                updateTodayLog { $0.caloriesBurned = Int(healthManager.caloriesBurnedToday) }
-            }
-            if healthManager.proteinToday > 0 { updateTodayLog { $0.protein = Int(healthManager.proteinToday) + $0.manualProtein } }
-            if healthManager.carbsToday > 0 { updateTodayLog { $0.carbs = Int(healthManager.carbsToday) + $0.manualCarbs } }
-            if healthManager.fatToday > 0 { updateTodayLog { $0.fat = Int(healthManager.fatToday) + $0.manualFat } }
         }
+            
+        for log in logs {
+            let dayWeights = weightEntries.filter {
+                Calendar.current.isDate($0.date, inSameDayAs: log.date)
+            }
+            
+            if let latestEntry = dayWeights.sorted(by: { $0.date < $1.date }).last {
+                if log.weight != latestEntry.weight {
+                    log.weight = latestEntry.weight
+                }
+            }
+        }
+
+        if healthManager.caloriesConsumedToday > 0 {
+            updateTodayLog { $0.caloriesConsumed = Int(healthManager.caloriesConsumedToday) + $0.manualCalories }
+        }
+        if enableCaloriesBurned {
+            updateTodayLog { $0.caloriesBurned = Int(healthManager.caloriesBurnedToday) }
+        }
+        if healthManager.proteinToday > 0 { updateTodayLog { $0.protein = Int(healthManager.proteinToday) + $0.manualProtein } }
+        if healthManager.carbsToday > 0 { updateTodayLog { $0.carbs = Int(healthManager.carbsToday) + $0.manualCarbs } }
+        if healthManager.fatToday > 0 { updateTodayLog { $0.fat = Int(healthManager.fatToday) + $0.manualFat } }
+    }
     
     private func updateTodayLog(update: (DailyLog) -> Void) {
         let todayDate = Calendar.current.startOfDay(for: Date())
@@ -496,6 +505,112 @@ struct ContentView: View {
                 }
                 .font(.subheadline)
             }
+        }
+    }
+}
+
+// MARK: - NEW: Apple Health Info Sheet
+struct AppleHealthInfoSheet: View {
+    @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var healthManager: HealthManager
+    @AppStorage("enableHealthKitSync") private var enableHealthKitSync: Bool = true
+    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header Image
+                    Image(systemName: "heart.text.square.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.red)
+                        .padding(.top, 20)
+                    
+                    // Title & Description
+                    VStack(spacing: 12) {
+                        Text("Apple Health Integration")
+                            .font(.title2).bold()
+                        
+                        Text("RepScale connects seamlessly with Apple Health to keep your nutrition goals up to date.")
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                    }
+                    
+                    // Toggle Section
+                    VStack(spacing: 0) {
+                        Toggle(isOn: $enableHealthKitSync) {
+                            HStack {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .foregroundColor(.blue)
+                                VStack(alignment: .leading) {
+                                    Text("Sync with Apple Health")
+                                        .font(.headline)
+                                    Text("Import nutrition & workouts")
+                                        .font(.caption).foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(isDarkMode ? Color.gray.opacity(0.1) : Color(uiColor: .secondarySystemGroupedBackground))
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal)
+                    .onChange(of: enableHealthKitSync) { _, newValue in
+                        if newValue {
+                            healthManager.requestAuthorization()
+                        }
+                    }
+                    
+                    // Instructions Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("How to connect other apps")
+                            .font(.headline)
+                        
+                        VStack(alignment: .leading, spacing: 16) {
+                            InstructionRow(num: 1, text: "Log your meals in apps like MyFitnessPal, Cronometer, or Lose It!")
+                            InstructionRow(num: 2, text: "Open that app's settings and ensure 'Write to Apple Health' is enabled.")
+                            InstructionRow(num: 3, text: "RepScale will automatically read that data to update your daily summaries here.")
+                        }
+                    }
+                    .padding()
+                    .background(isDarkMode ? Color.gray.opacity(0.1) : Color(uiColor: .secondarySystemGroupedBackground))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                    
+                    Spacer()
+                }
+                .padding(.vertical)
+            }
+            .navigationTitle("Sync Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .background(isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground))
+        }
+    }
+}
+
+struct InstructionRow: View {
+    let num: Int
+    let text: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(num)")
+                .font(.caption)
+                .fontWeight(.bold)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(Color.blue.opacity(0.1)))
+                .foregroundColor(.blue)
+            
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

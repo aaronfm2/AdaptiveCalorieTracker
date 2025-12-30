@@ -3,6 +3,8 @@ import SwiftData
 
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
+    // --- Access HealthManager to trigger sync ---
+    @EnvironmentObject var healthManager: HealthManager
     
     // Properties passed from Parent
     let estimatedMaintenance: Int?
@@ -23,6 +25,9 @@ struct SettingsView: View {
     @AppStorage("userGender") private var userGender: Gender = .male
     @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
     @AppStorage("isDarkMode") private var isDarkMode: Bool = true
+    
+    // --- NEW: HealthKit Toggle ---
+    @AppStorage("enableHealthKitSync") private var enableHealthKitSync: Bool = true
     
     var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     
@@ -69,6 +74,17 @@ struct SettingsView: View {
                 
                 // MARK: - Section 2: Tracking Configuration
                 Section {
+                    // --- NEW: Apple Health Toggle ---
+                    Toggle(isOn: $enableHealthKitSync) {
+                        Label("Sync with Apple Health", systemImage: "heart.text.square")
+                            .foregroundColor(.red)
+                    }
+                    .onChange(of: enableHealthKitSync) { _, newValue in
+                        if newValue {
+                            healthManager.requestAuthorization()
+                        }
+                    }
+                    
                     Toggle(isOn: $isCalorieCountingEnabled) {
                         Label("Enable Calorie Counting", systemImage: "flame")
                             .foregroundColor(.primary)
@@ -84,7 +100,7 @@ struct SettingsView: View {
                     Text("Tracking")
                 } footer: {
                     if isCalorieCountingEnabled {
-                        Text("When enabled, active energy from Apple Health is deducted from your net calorie total.")
+                        Text("Enable Apple Health to automatically import nutrition data from apps like MyFitnessPal, Cronometer, or Lose It!.")
                     }
                 }
                 
