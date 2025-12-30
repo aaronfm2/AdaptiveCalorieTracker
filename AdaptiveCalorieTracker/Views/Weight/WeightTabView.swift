@@ -71,9 +71,7 @@ struct WeightTrackerView: View {
                 // MARK: - Weight List
                 List {
                     ForEach(weights) { entry in
-                        Button(action: {
-                            selectedEntry = entry
-                        }) {
+                        NavigationLink(destination: WeightEntryDetailView(entry: entry, profile: profile)) {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
                                     VStack(alignment: .leading) {
