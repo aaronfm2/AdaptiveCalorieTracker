@@ -54,6 +54,7 @@ struct DashboardView: View {
     @State private var showingSettings = false
     @State private var showingCustomization = false
     @State private var showingMaintenanceInfo = false
+    @State private var showingReconfigureGoal = false
     @State private var visibleMethods: Set<String> = []
 
     var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
@@ -117,6 +118,12 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showingCustomization) {
                 CustomizationSheet(layout: $layout, onSave: saveLayout)
+            }
+            .sheet(isPresented: $showingReconfigureGoal) {
+                GoalConfigurationView(
+                    appEstimatedMaintenance: viewModel.estimatedMaintenance,
+                    latestWeightKg: weights.first?.weight
+                )
             }
             .alert("About Estimated Maintenance", isPresented: $showingMaintenanceInfo) {
                 Button("OK", role: .cancel) { }
@@ -280,6 +287,13 @@ struct DashboardView: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
+                        Button(action: { showingReconfigureGoal = true }) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .offset(x: 6, y: -10)
+                        
                         Text("Goal (\(goalType))").font(.caption).fontWeight(.medium).foregroundColor(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text("\(targetDisplay, specifier: "%.1f")").font(.title3).fontWeight(.semibold).foregroundStyle(goalColor)
