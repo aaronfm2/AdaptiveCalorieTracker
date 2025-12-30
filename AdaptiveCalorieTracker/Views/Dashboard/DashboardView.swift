@@ -59,12 +59,11 @@ struct DashboardView: View {
             }
             .background(appBackgroundColor)
             .navigationTitle("Dashboard")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
-                            .foregroundColor(.primary)
+                            .foregroundColor(.blue)
                     }
                     .spotlightTarget(.settings)
                 }
