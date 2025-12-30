@@ -64,8 +64,8 @@ struct DashboardView: View {
     
     var goalColor: Color {
         switch GoalType(rawValue: goalType) {
-        case .cutting: return .green
-        case .bulking: return .red
+        case .cutting: return .blue
+        case .bulking: return .blue
         case .maintenance: return .blue
         default: return .blue
         }

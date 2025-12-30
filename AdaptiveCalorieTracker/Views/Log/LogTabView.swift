@@ -36,7 +36,6 @@ struct ContentView: View {
     @State private var selectedLogDate = Date()
     @State private var inputMode = 0
     @State private var showingInfoSheet = false
-
     @State private var isRefreshingHistory = false
     
     // Inputs
@@ -85,6 +84,7 @@ struct ContentView: View {
                 if isCalorieCountingEnabled {
                     summaryHeader
                         .background(appBackgroundColor)
+                        .padding(.top, 8)
                 }
                 
                 // List
@@ -152,7 +152,6 @@ struct ContentView: View {
             .sheet(isPresented: $showingLogSheet) {
                 logSheetContent
             }
-            // --- UPDATED: Use Sheet instead of Alert for Info ---
             .sheet(isPresented: $showingInfoSheet) {
                 AppleHealthInfoSheet()
             }
@@ -431,28 +430,147 @@ struct ContentView: View {
     private var summaryHeader: some View {
         if let today = logs.first(where: { Calendar.current.isDateInToday($0.date) }) {
             let burned = enableCaloriesBurned ? today.caloriesBurned : 0
-            let remaining = dailyGoal + burned - today.caloriesConsumed
+            let consumed = today.caloriesConsumed
+            let remaining = dailyGoal + burned - consumed
             
-            VStack(spacing: 8) {
-                VStack(spacing: 5) {
-                    Text("\(remaining)")
-                        .font(.system(size: 40, weight: .bold))
-                        .foregroundColor(remaining < 0 ? .red : .blue)
-                    Text("Calories Left Today")
-                        .font(.caption).foregroundColor(.secondary)
+            // Progress Calculation
+            let totalBudget = Double(dailyGoal + burned)
+            let progress = totalBudget > 0 ? Double(consumed) / totalBudget : 0
+            let isOverBudget = remaining < 0
+            
+            VStack(spacing: 16) {
+                HStack(alignment: .center, spacing: 24) {
+                    // 1. Progress Ring
+                    ZStack {
+                        Circle()
+                            .stroke(lineWidth: 10)
+                            .opacity(0.15)
+                            .foregroundColor(isOverBudget ? .red : .blue)
+                        
+                        Circle()
+                            .trim(from: 0.0, to: min(progress, 1.0))
+                            .stroke(style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+                            .foregroundColor(isOverBudget ? .red : .blue)
+                            .rotationEffect(Angle(degrees: 270.0))
+                            .animation(.linear, value: progress)
+                        
+                        VStack(spacing: 2) {
+                            Text("\(remaining)")
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundColor(isOverBudget ? .red : .primary)
+                            Text("Left")
+                                .font(.system(size: 10, weight: .bold))
+                                .textCase(.uppercase)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .frame(width: 100, height: 100)
+                    
+                    // 2. Stats Column
+                    if enableCaloriesBurned {
+                        // Full Layout with Exercise
+                        VStack(spacing: 12) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Goal").font(.caption2).bold().foregroundColor(.secondary)
+                                    HStack(spacing: 2) {
+                                        Text("\(dailyGoal)").font(.system(.callout, design: .rounded)).fontWeight(.semibold)
+                                        Text("kcal").font(.system(size: 10)).foregroundColor(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("Food").font(.caption2).bold().foregroundColor(.secondary)
+                                    HStack(spacing: 2) {
+                                        Text("\(consumed)").font(.system(.callout, design: .rounded)).fontWeight(.semibold)
+                                        Text("kcal").font(.system(size: 10)).foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            
+                            Divider()
+                            
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Exercise").font(.caption2).bold().foregroundColor(.orange)
+                                    HStack(spacing: 2) {
+                                        Text("\(burned)").font(.system(.callout, design: .rounded)).fontWeight(.semibold).foregroundColor(.orange)
+                                        Text("kcal").font(.system(size: 10)).foregroundColor(.orange.opacity(0.8))
+                                    }
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("Net").font(.caption2).bold().foregroundColor(.secondary)
+                                    HStack(spacing: 2) {
+                                        Text("\(consumed - burned)").font(.system(.callout, design: .rounded)).fontWeight(.semibold)
+                                        Text("kcal").font(.system(size: 10)).foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Simple Layout (Goal & Food Only)
+                        HStack(spacing: 0) {
+                            Spacer()
+                            VStack(spacing: 4) {
+                                Text("Daily Goal")
+                                    .font(.caption)
+                                    .bold()
+                                    .foregroundColor(.secondary)
+                                    .textCase(.uppercase)
+                                HStack(spacing: 2) {
+                                    Text("\(dailyGoal)")
+                                        .font(.system(.title3, design: .rounded))
+                                        .bold()
+                                    Text("kcal").font(.system(size: 12)).foregroundColor(.secondary).fontWeight(.medium)
+                                }
+                            }
+                            
+                            Spacer()
+                            Divider().frame(height: 35)
+                            Spacer()
+                            
+                            VStack(spacing: 4) {
+                                Text("Consumed")
+                                    .font(.caption)
+                                    .bold()
+                                    .foregroundColor(.secondary)
+                                    .textCase(.uppercase)
+                                HStack(spacing: 2) {
+                                    Text("\(consumed)")
+                                        .font(.system(.title3, design: .rounded))
+                                        .bold()
+                                    Text("kcal").font(.system(size: 12)).foregroundColor(.secondary).fontWeight(.medium)
+                                }
+                            }
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
                 }
                 
+                // Bottom Row: 30-Day Avg
                 if averageCalories30Days > 0 {
-                    Text("30-Day Avg: \(averageCalories30Days) kcal")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
+                     HStack(spacing: 6) {
+                        Image(systemName: "chart.bar.fill")
+                             .font(.caption2)
+                            .foregroundColor(.purple)
+                        Text("30-Day Average: \(averageCalories30Days) kcal")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                     }
+                     .padding(.vertical, 6)
+                     .padding(.horizontal, 10)
+                     .background(Color.purple.opacity(0.1))
+                     .cornerRadius(8)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(Color.gray.opacity(0.05))
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 16).fill(cardBackgroundColor))
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+            .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
         }
     }
     
@@ -509,7 +627,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - NEW: Apple Health Info Sheet
+// MARK: - Apple Health Info Sheet
 struct AppleHealthInfoSheet: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var healthManager: HealthManager
