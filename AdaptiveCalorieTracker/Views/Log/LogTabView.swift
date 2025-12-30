@@ -4,11 +4,7 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \DailyLog.date, order: .reverse) private var logs: [DailyLog]
-    
-    // Fetch workouts to link them to logs
     @Query(sort: \Workout.date, order: .reverse) private var workouts: [Workout]
-    
-    // Fetch Weight Entries to find the starting date
     @Query(sort: \WeightEntry.date, order: .forward) private var weightEntries: [WeightEntry]
     
     @EnvironmentObject var healthManager: HealthManager
@@ -19,17 +15,11 @@ struct ContentView: View {
     @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
     @AppStorage("isDarkMode") private var isDarkMode: Bool = true
 
-    // MARK: - Color Palette (Two Colors)
-    
-    // 1. Entire Background (#1C1C1E)
     var appBackgroundColor: Color {
-        // RGB: 28, 28, 30
         isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
     }
     
-    // 2. List Entries (#27272A)
     var cardBackgroundColor: Color {
-        // RGB: 39, 39, 42 -> ~0.153, 0.153, 0.165
         isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
     }
     
@@ -82,24 +72,24 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Summary Header (Blends into background)
+                // Summary Header
                 if isCalorieCountingEnabled {
                     summaryHeader
                         .background(appBackgroundColor)
                 }
                 
-                // List (Background matches top)
+                // List
                 List {
                     ForEach(groupedSections) { section in
                         Section(header: Text(section.month, format: .dateTime.month(.wide).year())) {
                             ForEach(section.logs) { log in
                                 NavigationLink(destination: LogDetailView(
                                     log: log,
-                                    workouts: getWorkouts(for: log.date)
+                                    workouts: getWorkouts(for: log.date),
+                                    weightEntry: getWeightEntry(for: log.date) // --- NEW: Pass Weight Entry ---
                                 )) {
                                     logRow(for: log)
                                 }
-                                // Card Color (#27272A in Dark Mode)
                                 .listRowBackground(cardBackgroundColor)
                             }
                             .onDelete { indexSet in
@@ -109,10 +99,10 @@ struct ContentView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden) // Hides system default
-                .background(appBackgroundColor)   // Applies #1C1C1E
+                .scrollContentBackground(.hidden)
+                .background(appBackgroundColor)
             }
-            .background(appBackgroundColor) // Covers Safe Areas
+            .background(appBackgroundColor)
             .navigationTitle("Daily Logs")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -185,6 +175,23 @@ struct ContentView: View {
 
     // MARK: - Helper Methods
     
+    private func getWorkouts(for date: Date) -> [Workout] {
+        workouts.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
+    }
+    
+    // --- NEW: Helper to find latest weight entry for a day ---
+    private func getWeightEntry(for date: Date) -> WeightEntry? {
+        // Filter entries for the specific day
+        let dayEntries = weightEntries.filter {
+            Calendar.current.isDate($0.date, inSameDayAs: date)
+        }
+        // Return the last one (latest in the day if multiple exist)
+        // Since weightEntries is sorted by .forward, last is latest
+        return dayEntries.last
+    }
+
+    // ... (rest of the file remains largely unchanged) ...
+    
     private func refreshLast365Days() {
         isRefreshingHistory = true
         let firstWeightDate = weightEntries.first?.date
@@ -228,10 +235,6 @@ struct ContentView: View {
                 withAnimation { isRefreshingHistory = false }
             }
         }
-    }
-    
-    private func getWorkouts(for date: Date) -> [Workout] {
-        workouts.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
     }
     
     private var logSheetContent: some View {
@@ -307,24 +310,19 @@ struct ContentView: View {
             let cVal = Int(carbsInput) ?? 0
             let fVal = Int(fatInput) ?? 0
             
-            // --- NEW: Robust Weight Lookup ---
-            // Find ALL weights for this day and grab the LATEST one
             let dayWeights = weightEntries.filter {
                 Calendar.current.isDate($0.date, inSameDayAs: logDate)
             }
             let latestWeight = dayWeights.sorted(by: { $0.date < $1.date }).last?.weight
-            // ---------------------------------
             
             let existingLog = logs.first(where: { $0.date == logDate })
             
             if let log = existingLog {
-                // --- Force update the weight if found ---
                 if let w = latestWeight {
                     log.weight = w
                 }
                 
                 if inputMode == 0 {
-                    // Add Mode
                     log.manualCalories += calVal
                     log.caloriesConsumed += calVal
                     log.manualProtein += pVal
@@ -334,7 +332,6 @@ struct ContentView: View {
                     log.manualFat += fVal
                     log.fat = (log.fat ?? 0) + fVal
                 } else {
-                    // Set Mode
                     let currentHKCalories = log.caloriesConsumed - log.manualCalories
                     log.manualCalories = calVal - currentHKCalories
                     log.caloriesConsumed = calVal

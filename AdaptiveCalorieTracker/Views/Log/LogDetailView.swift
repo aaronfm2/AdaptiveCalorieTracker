@@ -4,6 +4,8 @@ import SwiftData
 struct LogDetailView: View {
     @Bindable var log: DailyLog
     let workouts: [Workout]
+    // --- NEW: Accept optional WeightEntry ---
+    let weightEntry: WeightEntry?
     
     @EnvironmentObject var healthManager: HealthManager
     @State private var isSyncing = false
@@ -11,6 +13,10 @@ struct LogDetailView: View {
     @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
     @State private var showingEditOverrides = false
     @AppStorage("isDarkMode") private var isDarkMode: Bool = true
+    
+    // --- NEW: Unit Preference ---
+    @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
+    var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
 
     var appBackgroundColor: Color {
         isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
@@ -46,7 +52,11 @@ struct LogDetailView: View {
                 
                 workoutsSection
                 
-                // NEW: Notes Section
+                // --- Weight Section ---
+                if let entry = weightEntry {
+                    weightSection(entry: entry)
+                }
+                
                 notesSection
             }
             .padding(.bottom, 30)
@@ -60,8 +70,13 @@ struct LogDetailView: View {
                     if isCalorieCountingEnabled {
                         Button("Edit") { showingEditOverrides = true }
                     }
+                    
                     Button(action: syncHealthData) {
-                        if isSyncing { ProgressView() } else { Image(systemName: "arrow.triangle.2.circlepath") }
+                        if isSyncing {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
                     }
                     .disabled(isSyncing)
                 }
@@ -72,7 +87,61 @@ struct LogDetailView: View {
         }
     }
     
-    // ... (syncHealthData, manualOverrideBanner, dateHeader, nutritionSection remain unchanged) ...
+    // --- NEW: Weight Section View ---
+    private func weightSection(entry: WeightEntry) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Weight Log").font(.headline)
+                Spacer()
+                // Goal Type Badge
+                if let goal = log.goalType {
+                    Text(goal)
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(goalColor(for: goal).opacity(0.15))
+                        .foregroundColor(goalColor(for: goal))
+                        .cornerRadius(6)
+                }
+            }
+            
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text("\(entry.weight.toUserWeight(system: unitSystem), specifier: "%.1f")")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text(weightLabel)
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+            }
+            
+            if !entry.note.isEmpty {
+                Divider()
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "note.text")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                    Text(entry.note)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .italic()
+                }
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(cardBackgroundColor))
+        .padding(.horizontal)
+    }
+    
+    private func goalColor(for goal: String) -> Color {
+        switch GoalType(rawValue: goal) {
+        case .cutting: return .green
+        case .bulking: return .red
+        case .maintenance: return .blue
+        default: return .gray
+        }
+    }
     
     private func syncHealthData() {
         isSyncing = true
@@ -82,9 +151,11 @@ struct LogDetailView: View {
                 withAnimation {
                     if data.consumed > 0 { log.caloriesConsumed = Int(data.consumed) + log.manualCalories }
                     if enableCaloriesBurned { log.caloriesBurned = Int(data.burned) }
+                    
                     if data.protein > 0 { log.protein = Int(data.protein) + log.manualProtein }
                     if data.carbs > 0 { log.carbs = Int(data.carbs) + log.manualCarbs }
                     if data.fat > 0 { log.fat = Int(data.fat) + log.manualFat }
+                    
                     isSyncing = false
                 }
             }
@@ -93,9 +164,15 @@ struct LogDetailView: View {
 
     private var manualOverrideBanner: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Includes Manual Adjustments").font(.headline).foregroundColor(.purple)
-            Text("Values below include data from HealthKit plus your manual additions.").font(.caption).foregroundColor(.secondary)
+            Text("Includes Manual Adjustments")
+                .font(.headline)
+                .foregroundColor(.purple)
+            Text("Values below include data from HealthKit plus your manual additions.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
             Divider().padding(.vertical, 4)
+            
             HStack {
                 Text("Added:")
                 if log.manualCalories != 0 { Text("\(log.manualCalories) kcal").bold() }
@@ -103,60 +180,86 @@ struct LogDetailView: View {
                 if log.manualCarbs != 0 { Text("\(log.manualCarbs)g C") }
                 if log.manualFat != 0 { Text("\(log.manualFat)g F") }
             }
-            .font(.caption).foregroundColor(.purple)
+            .font(.caption)
+            .foregroundColor(.purple)
         }
-        .padding().background(RoundedRectangle(cornerRadius: 12).fill(Color.purple.opacity(0.1))).padding(.horizontal)
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.purple.opacity(0.1)))
+        .padding(.horizontal)
     }
     
     private var dateHeader: some View {
         VStack(spacing: 5) {
-            Text(log.date, format: .dateTime.weekday(.wide).month().day()).font(.title2).bold()
-            Text(log.date, format: .dateTime.year()).foregroundColor(.secondary)
+            Text(log.date, format: .dateTime.weekday(.wide).month().day())
+                .font(.title2).bold()
+            Text(log.date, format: .dateTime.year())
+                .foregroundColor(.secondary)
         }
-        .frame(maxWidth: .infinity).padding(.top)
+        .frame(maxWidth: .infinity)
+        .padding(.top)
     }
     
     private var nutritionSection: some View {
         VStack(alignment: .leading, spacing: 15) {
             Text("Nutrition Total").font(.headline)
+            
             HStack(spacing: 20) {
                 MacroCard(title: "Protein", value: log.protein, color: .red, backgroundColor: isDarkMode ? Color.gray.opacity(0.1) : Color(uiColor: .tertiarySystemGroupedBackground))
                 MacroCard(title: "Carbs", value: log.carbs, color: .blue, backgroundColor: isDarkMode ? Color.gray.opacity(0.1) : Color(uiColor: .tertiarySystemGroupedBackground))
                 MacroCard(title: "Fats", value: log.fat, color: .yellow, backgroundColor: isDarkMode ? Color.gray.opacity(0.1) : Color(uiColor: .tertiarySystemGroupedBackground))
             }
+            
             Divider()
+            
             HStack {
                 VStack(alignment: .leading) {
-                    Text("Total Consumed").font(.caption).foregroundColor(.secondary)
-                    Text("\(log.caloriesConsumed)").font(.title3).bold()
+                    Text("Total Consumed")
+                        .font(.caption).foregroundColor(.secondary)
+                    Text("\(log.caloriesConsumed)")
+                        .font(.title3).bold()
                 }
                 Spacer()
+                
                 if enableCaloriesBurned {
                     VStack(alignment: .trailing) {
-                        Text("Calories Burned").font(.caption).foregroundColor(.secondary)
-                        Text("\(log.caloriesBurned)").font(.title3).bold().foregroundColor(.orange)
+                        Text("Calories Burned")
+                            .font(.caption).foregroundColor(.secondary)
+                        Text("\(log.caloriesBurned)")
+                            .font(.title3).bold()
+                            .foregroundColor(.orange)
                     }
                 }
             }
         }
-        .padding().background(RoundedRectangle(cornerRadius: 12).fill(cardBackgroundColor)).padding(.horizontal)
+        .padding()
+        // Apply Card Background
+        .background(RoundedRectangle(cornerRadius: 12).fill(cardBackgroundColor))
+        .padding(.horizontal)
     }
-
+    
     private var workoutsSection: some View {
         VStack(alignment: .leading, spacing: 15) {
             Text("Workouts").font(.headline).padding(.horizontal)
+            
             if workouts.isEmpty {
                 HStack {
                     Spacer()
                     VStack(spacing: 10) {
-                        Image(systemName: "figure.run.circle").font(.largeTitle).foregroundColor(.gray)
-                        Text("No workout logged for this day.").foregroundColor(.secondary)
+                        Image(systemName: "figure.run.circle")
+                            .font(.largeTitle)
+                            .foregroundColor(.gray)
+                        Text("No workout logged for this day.")
+                            .foregroundColor(.secondary)
                     }
                     Spacer()
                 }
-                .padding().background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.05))).padding(.horizontal)
+                .padding()
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.05)))
+                .padding(.horizontal)
             } else {
-                ForEach(workouts) { w in workoutCard(for: w) }
+                ForEach(workouts) { w in
+                    workoutCard(for: w)
+                }
             }
         }
     }
@@ -192,7 +295,10 @@ struct LogDetailView: View {
                 Text("Note: \(w.note)").font(.caption).italic().foregroundColor(.secondary)
             }
         }
-        .padding().background(RoundedRectangle(cornerRadius: 12).fill(cardBackgroundColor)).padding(.horizontal)
+        .padding()
+        // Apply Card Background
+        .background(RoundedRectangle(cornerRadius: 12).fill(cardBackgroundColor))
+        .padding(.horizontal)
     }
     
     private func exerciseRow(for exercise: ExerciseEntry, setNumber: Int) -> some View {
@@ -207,7 +313,8 @@ struct LogDetailView: View {
                     }
                     .font(.callout).monospacedDigit().foregroundColor(.blue)
                 } else {
-                    Text("\(exercise.reps ?? 0) x \(exercise.weight ?? 0.0, specifier: "%.1f") kg").font(.callout).monospacedDigit()
+                    Text("\(exercise.reps ?? 0) x \(exercise.weight ?? 0.0, specifier: "%.1f") kg")
+                        .font(.callout).monospacedDigit()
                 }
                 Spacer()
             }
@@ -218,16 +325,16 @@ struct LogDetailView: View {
         .padding(.vertical, 2)
     }
     
-    // NEW: Notes Section
+    // Notes Section (Daily Log Note)
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Notes").font(.headline).padding(.horizontal)
+            Text("Daily Note").font(.headline).padding(.horizontal)
             
             VStack {
                 TextEditor(text: $log.note)
                     .frame(minHeight: 100)
                     .padding(4)
-                    .scrollContentBackground(.hidden) // Removes default gray background of TextEditor
+                    .scrollContentBackground(.hidden)
                     .background(isDarkMode ? Color.gray.opacity(0.15) : Color.gray.opacity(0.1))
                     .cornerRadius(8)
             }
