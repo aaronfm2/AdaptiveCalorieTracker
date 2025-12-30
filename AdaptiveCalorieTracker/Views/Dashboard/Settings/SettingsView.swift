@@ -74,16 +74,7 @@ struct SettingsView: View {
                 
                 // MARK: - Section 2: Tracking Configuration
                 Section {
-                    // --- NEW: Apple Health Toggle ---
-                    Toggle(isOn: $enableHealthKitSync) {
-                        Label("Sync with Apple Health", systemImage: "heart.text.square")
-                            .foregroundColor(.red)
-                    }
-                    .onChange(of: enableHealthKitSync) { _, newValue in
-                        if newValue {
-                            healthManager.requestAuthorization()
-                        }
-                    }
+                    // Toggle removed here
                     
                     Toggle(isOn: $isCalorieCountingEnabled) {
                         Label("Enable Calorie Counting", systemImage: "flame")

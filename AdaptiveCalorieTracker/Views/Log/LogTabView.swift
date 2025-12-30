@@ -655,30 +655,7 @@ struct AppleHealthInfoSheet: View {
                             .padding(.horizontal)
                     }
                     
-                    // Toggle Section
-                    VStack(spacing: 0) {
-                        Toggle(isOn: $enableHealthKitSync) {
-                            HStack {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                                    .foregroundColor(.blue)
-                                VStack(alignment: .leading) {
-                                    Text("Sync with Apple Health")
-                                        .font(.headline)
-                                    Text("Import nutrition & workouts")
-                                        .font(.caption).foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                        .padding()
-                        .background(isDarkMode ? Color.gray.opacity(0.1) : Color(uiColor: .secondarySystemGroupedBackground))
-                        .cornerRadius(12)
-                    }
-                    .padding(.horizontal)
-                    .onChange(of: enableHealthKitSync) { _, newValue in
-                        if newValue {
-                            healthManager.requestAuthorization()
-                        }
-                    }
+                    // Toggle Removed
                     
                     // Instructions Section
                     VStack(alignment: .leading, spacing: 16) {
@@ -689,6 +666,22 @@ struct AppleHealthInfoSheet: View {
                             InstructionRow(num: 1, text: "Log your meals in apps like MyFitnessPal, Cronometer, or Lose It!")
                             InstructionRow(num: 2, text: "Open that app's settings and ensure 'Write to Apple Health' is enabled.")
                             InstructionRow(num: 3, text: "RepScale will automatically read that data to update your daily summaries here.")
+                        }
+                    }
+                    .padding()
+                    .background(isDarkMode ? Color.gray.opacity(0.1) : Color(uiColor: .secondarySystemGroupedBackground))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                    
+                    // Apple Health Troubleshooting
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Apple Health Troubleshooting")
+                            .font(.headline)
+                        
+                        VStack(alignment: .leading, spacing: 16) {
+                            InstructionRow(num: 1, text: "Open the Health app.")
+                            InstructionRow(num: 2, text: "Tap Sharing -> Apps -> RepScale.")
+                            InstructionRow(num: 3, text: "Then turn on all.")
                         }
                     }
                     .padding()
