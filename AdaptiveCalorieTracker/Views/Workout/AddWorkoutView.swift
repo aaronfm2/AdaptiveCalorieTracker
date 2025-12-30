@@ -668,7 +668,8 @@ struct LoadTemplateSheet: View {
                                         .font(.caption).foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                Text("\(template.exercises.count) exercises")
+                                // FIX: Safely unwrap optional exercises count
+                                Text("\((template.exercises ?? []).count) exercises")
                                     .font(.caption).foregroundColor(.secondary)
                                 Image(systemName: "plus.circle")
                             }

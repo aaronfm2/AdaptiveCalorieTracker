@@ -276,10 +276,12 @@ struct LogDetailView: View {
             }
             .padding(.bottom, 5)
             Divider()
-            if w.exercises.isEmpty {
+            
+            // FIX: Safely unwrap exercises
+            if (w.exercises ?? []).isEmpty {
                 Text("No exercises logged.").font(.caption).italic().foregroundColor(.secondary)
             } else {
-                let grouped = groupExercises(w.exercises)
+                let grouped = groupExercises(w.exercises ?? [])
                 ForEach(grouped, id: \.name) { group in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(group.name).font(.headline).foregroundColor(.primary).padding(.top, 4)

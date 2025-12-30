@@ -9,7 +9,9 @@ final class Workout {
     var muscleGroups: [String] = []
     var note: String = ""
     
-    @Relationship(deleteRule: .cascade) var exercises: [ExerciseEntry] = []
+    // FIX: Changed to Optional [ExerciseEntry]? to satisfy CloudKit requirements
+    @Relationship(deleteRule: .cascade, inverse: \ExerciseEntry.workout)
+    var exercises: [ExerciseEntry]? = []
     
     init(date: Date, category: String, muscleGroups: [String], note: String = "") {
         self.id = UUID()
@@ -27,12 +29,10 @@ final class ExerciseEntry {
     var weight: Double?
     var note: String = ""
     
-    // --- NEW: Cardio Fields ---
     var duration: Double? // Minutes
     var distance: Double? // Kilometers
     var isCardio: Bool = false
     
-    // FIX: Added inverse relationship required by CloudKit
     var workout: Workout?
     
     init(name: String, reps: Int? = nil, weight: Double? = nil, duration: Double? = nil, distance: Double? = nil, isCardio: Bool = false, note: String = "") {
@@ -54,7 +54,9 @@ final class WorkoutTemplate {
     var category: String = ""
     var muscleGroups: [String] = []
     
-    @Relationship(deleteRule: .cascade) var exercises: [TemplateExerciseEntry] = []
+    // FIX: Changed to Optional [TemplateExerciseEntry]?
+    @Relationship(deleteRule: .cascade, inverse: \TemplateExerciseEntry.template)
+    var exercises: [TemplateExerciseEntry]? = []
     
     init(name: String, category: String, muscleGroups: [String]) {
         self.name = name
@@ -70,12 +72,10 @@ final class TemplateExerciseEntry {
     var weight: Double?
     var note: String = ""
     
-    // --- NEW: Cardio Fields ---
     var duration: Double?
     var distance: Double?
     var isCardio: Bool = false
     
-    // FIX: Added inverse relationship required by CloudKit
     var template: WorkoutTemplate?
     
     init(name: String, reps: Int? = nil, weight: Double? = nil, duration: Double? = nil, distance: Double? = nil, isCardio: Bool = false, note: String = "") {

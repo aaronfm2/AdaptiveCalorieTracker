@@ -320,7 +320,8 @@ struct SettingsView: View {
             // Flatten Exercises
             var exerciseDetails: [String] = []
             for w in dayWorkouts {
-                for ex in w.exercises {
+                // FIX: Safely unwrap exercises
+                for ex in (w.exercises ?? []) {
                     var details = ex.name
                     if ex.isCardio {
                         var parts: [String] = []

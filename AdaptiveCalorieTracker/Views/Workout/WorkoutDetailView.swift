@@ -22,7 +22,8 @@ struct WorkoutDetailView: View {
     // Helper to group exercises by name while keeping order
     var groupedExercises: [(name: String, sets: [ExerciseEntry])] {
         var groups: [(name: String, sets: [ExerciseEntry])] = []
-        for exercise in workout.exercises {
+        // FIX: Unwrap workout.exercises
+        for exercise in (workout.exercises ?? []) {
             if let last = groups.last, last.name == exercise.name {
                 groups[groups.count - 1].sets.append(exercise)
             } else {
@@ -59,19 +60,17 @@ struct WorkoutDetailView: View {
             .listRowBackground(cardBackgroundColor)
             
             Section("Exercises") {
-                if workout.exercises.isEmpty {
+                // FIX: Check if exercises array is nil or empty
+                if (workout.exercises ?? []).isEmpty {
                     Text("No exercises logged").italic().foregroundColor(.secondary)
                 } else {
-                    // Iterate over the GROUPS
                     ForEach(groupedExercises, id: \.name) { group in
                         VStack(alignment: .leading, spacing: 8) {
-                            // Parent Header
                             Text(group.name)
                                 .font(.headline)
                                 .foregroundColor(.primary)
                                 .padding(.vertical, 4)
                             
-                            // Child Rows (Sets)
                             ForEach(Array(group.sets.enumerated()), id: \.element) { index, exercise in
                                 VStack(alignment: .leading, spacing: 4) {
                                     HStack {
@@ -86,7 +85,6 @@ struct WorkoutDetailView: View {
                                         if exercise.isCardio {
                                             HStack(spacing: 8) {
                                                 if let dist = exercise.distance, dist > 0 {
-                                                    // Convert distance for display
                                                     Text("\(dist.toUserDistance(system: unitSystem), specifier: "%.2f") \(distLabel)")
                                                 }
                                                 if let time = exercise.duration, time > 0 {
@@ -95,7 +93,6 @@ struct WorkoutDetailView: View {
                                             }
                                             .font(.callout).monospacedDigit().foregroundColor(.blue)
                                         } else {
-                                            // Convert weight for display
                                             let displayWeight = (exercise.weight ?? 0.0).toUserWeight(system: unitSystem)
                                             
                                             Text("\(exercise.reps ?? 0) x \(displayWeight, specifier: "%.1f") \(weightLabel)")
@@ -128,8 +125,8 @@ struct WorkoutDetailView: View {
                 .listRowBackground(cardBackgroundColor)
             }
         }
-        .scrollContentBackground(.hidden) // Hide system default
-        .background(appBackgroundColor)   // Apply custom background
+        .scrollContentBackground(.hidden)
+        .background(appBackgroundColor)
         .navigationTitle(workout.category)
         .toolbar {
             Button("Edit") {

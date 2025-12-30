@@ -9,7 +9,6 @@ class AddWorkoutViewModel {
     // Form Data
     var date: Date = Date()
     
-    // CHANGED: Added didSet to trigger muscle selection update
     var category: String = "Push" {
         didSet {
             updateMusclesForCategory()
@@ -47,9 +46,9 @@ class AddWorkoutViewModel {
             self.category = workout.category
             self.selectedMuscles = Set(workout.muscleGroups)
             self.note = workout.note
-            self.exercises = workout.exercises
+            // FIX: Unwrap optional exercises
+            self.exercises = workout.exercises ?? []
         } else {
-            // CHANGED: For new workouts, set default muscles based on the initial category
             updateMusclesForCategory()
         }
     }
@@ -70,7 +69,6 @@ class AddWorkoutViewModel {
     
     // MARK: - Methods
     
-    // CHANGED: New helper to sync muscles with category
     private func updateMusclesForCategory() {
         if let catEnum = WorkoutCategories(rawValue: category) {
             let defaults = catEnum.muscleGroups.map { $0.rawValue }
@@ -97,7 +95,6 @@ class AddWorkoutViewModel {
                 isCardio: ex.isCardio,
                 note: ""
             )
-            // Insert after the last item of this group
             if lastIndex + 1 < exercises.count {
                 exercises.insert(newEx, at: lastIndex + 1)
             } else {
@@ -131,10 +128,12 @@ class AddWorkoutViewModel {
     
     func loadTemplate(_ template: WorkoutTemplate) {
         category = template.category
-        // Note: setting category triggers didSet, which might reset muscles.
-        // But we immediately overwrite them with the template's muscles below, which is desired.
         selectedMuscles = Set(template.muscleGroups)
-        let newExercises = template.exercises.map { tex in
+        
+        // FIX: Unwrap optional template exercises
+        let templateExercises = template.exercises ?? []
+        
+        let newExercises = templateExercises.map { tex in
             ExerciseEntry(
                 name: tex.name,
                 reps: tex.reps,
