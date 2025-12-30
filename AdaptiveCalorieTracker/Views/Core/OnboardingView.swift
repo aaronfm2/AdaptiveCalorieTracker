@@ -140,10 +140,6 @@ struct OnboardingView: View {
                 }
                 .pickerStyle(.segmented)
                 
-                Toggle(isOn: $isDarkMode) {
-                    Label("Dark Mode", systemImage: "moon.fill")
-                        .foregroundColor(.primary)
-                }
             }
             Section(header: Text("Biometrics")) {
                 Picker("Gender", selection: $gender) {
