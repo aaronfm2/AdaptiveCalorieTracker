@@ -188,6 +188,29 @@ struct DashboardView: View {
                         }
                     }
                 }
+                
+                // --- NEW SECTION: Community & Support ---
+                Section("Community & Support") {
+                    // 1. Help & Support
+                    NavigationLink(destination: HelpSupportView()) {
+                        Label("Help and Support", systemImage: "questionmark.circle")
+                    }
+                    
+                    // 2. Follow Instagram
+                    if let url = URL(string: "https://www.instagram.com/repscale.app/") {
+                        Link(destination: url) {
+                            Label("Follow @RepScale.app", systemImage: "camera.fill")
+                        }
+                    }
+                    
+                    // 3. Review on App Store
+                    // NOTE: Replace 'idXXXXXXXXXX' with your actual App Store ID when available
+                    if let url = URL(string: "https://apps.apple.com/app/id1234567890?action=write-review") {
+                        Link(destination: url) {
+                            Label("Review on AppStore", systemImage: "star.fill")
+                        }
+                    }
+                }
             }
             .navigationTitle("Settings")
             .toolbar {
@@ -499,7 +522,6 @@ struct DashboardView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
     }
     
-    // --- UPDATED: Fixed Overflow Bug in AreaMark ---
     private var weightTrendCard: some View {
         let history = weights.map { (date: $0.date, weight: $0.weight.toUserWeight(system: unitSystem)) }
         let allWeights = history.map { $0.weight }
@@ -515,7 +537,6 @@ struct DashboardView: View {
             } else {
                 Chart {
                     ForEach(history.sorted(by: { $0.date < $1.date }), id: \.date) { item in
-                        // --- FIX 1: Set explicit yStart to lowerBound ---
                         AreaMark(
                             x: .value("Date", item.date),
                             yStart: .value("Base", lowerBound),
@@ -546,7 +567,6 @@ struct DashboardView: View {
                          AxisValueLabel(format: .dateTime.month().day())
                      }
                  }
-                 // --- FIX 2: Ensure content doesn't overflow bounds ---
                  .clipped()
             }
         }
@@ -772,5 +792,38 @@ struct GoalConfigurationView: View {
         )
         
         dismiss()
+    }
+}
+
+// MARK: - Help & Support View (NEW)
+struct HelpSupportView: View {
+    var body: some View {
+        List {
+            Section(header: Text("Common Questions")) {
+                DisclosureGroup("How is maintenance estimated?") {
+                    Text("We analyze your weight changes and calorie intake over the last 30 days to calculate your true maintenance level.")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                
+                DisclosureGroup("Why does my weight fluctuate?") {
+                    Text("Daily weight can vary due to water retention, salt intake, and digestion. Focus on the 30-day trend line.")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                
+                DisclosureGroup("Does it sync with HealthKit?") {
+                    Text("Yes! We pull Active Energy and Dietary Energy from Apple Health automatically. You can also add manual entries.")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+            }
+            
+            Section(header: Text("Contact")) {
+                if let url = URL(string: "mailto:feedback@repscale.app") {
+                    Link(destination: url) {
+                        Label("Email Support", systemImage: "envelope")
+                    }
+                }
+            }
+        }
+        .navigationTitle("Help & Support")
     }
 }
