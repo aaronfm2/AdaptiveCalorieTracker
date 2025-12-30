@@ -50,13 +50,9 @@ struct DashboardView: View {
         profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
     }
     
+    // UPDATED: Reverted to always return blue as requested
     var goalColor: Color {
-        switch GoalType(rawValue: profile.goalType) {
-        case .cutting: return .blue
-        case .bulking: return .blue
-        case .maintenance: return .blue
-        default: return .blue
-        }
+        return .blue
     }
 
     var body: some View {
@@ -341,7 +337,22 @@ struct DashboardView: View {
             }
         }
         .padding(20)
-        .background(RoundedRectangle(cornerRadius: 20).fill(goalColor.opacity(0.1)))
+        // UPDATED: Enhanced Visuals (Gradient, Border, Shadow) with Always Blue
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(
+                    LinearGradient(
+                        colors: [goalColor.opacity(0.2), goalColor.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(goalColor.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: goalColor.opacity(0.15), radius: 10, x: 0, y: 5)
     }
     
     private func weightChangeCard(index: Int, totalCount: Int) -> some View {

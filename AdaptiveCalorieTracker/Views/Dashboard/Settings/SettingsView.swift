@@ -192,7 +192,7 @@ struct SettingsView: View {
                         }
                     }
                     
-                    if let url = URL(string: "https://apps.apple.com/app/id1234567890?action=write-review") {
+                    if let url = URL(string: "https://apps.apple.com/app/id6757196736?action=write-review") {
                         Link(destination: url) {
                             Label("Review on AppStore", systemImage: "star")
                                 .foregroundColor(.primary)

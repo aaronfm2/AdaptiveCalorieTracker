@@ -119,7 +119,7 @@ class DashboardViewModel {
         
         switch effectiveMethod {
         case .weightTrend30Day:
-            progressWarningMessage = "Need more weight data over 30 days, or trend is moving away from goal."
+            progressWarningMessage = "Need more weight data over 30 days, or trend weight is moving away from goal."
         case .currentEatingHabits:
             progressWarningMessage = settings.goalType == GoalType.cutting.rawValue
                 ? "Eat less than maintenance on average to see estimate"
