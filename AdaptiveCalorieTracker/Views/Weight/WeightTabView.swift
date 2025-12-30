@@ -87,6 +87,15 @@ struct WeightTrackerView: View {
                                         .font(.title3)
                                         .foregroundColor(.primary)
                                 }
+                                // CHECK FOR PHOTOS: Added camera icon indicator
+                                if let photos = entry.photos, !photos.isEmpty {
+                                    Image(systemName: "camera.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.blue)
+                                        .padding(4)
+                                        .background(Color.blue.opacity(0.1))
+                                        .clipShape(Circle())
+                                }
                                 
                                 if !entry.note.isEmpty {
                                     Text(entry.note)
