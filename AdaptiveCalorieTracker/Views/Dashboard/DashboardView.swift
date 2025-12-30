@@ -8,8 +8,11 @@ struct DashboardCardConfig: Identifiable, Codable, Equatable {
     var id: String { type.rawValue }
 }
 
-// MARK: - 3. Main View
+// MARK: - Main View
 struct DashboardView: View {
+    // --- CLOUD SYNC: Source of Truth ---
+    @Bindable var profile: UserProfile
+    
     @Environment(\.modelContext) private var modelContext
     
     @Query(sort: \DailyLog.date, order: .forward) private var logs: [DailyLog]
@@ -19,52 +22,36 @@ struct DashboardView: View {
     @EnvironmentObject var healthManager: HealthManager
     @State private var viewModel = DashboardViewModel()
     
-    // MARK: - App Storage (Settings)
-    @AppStorage("dailyCalorieGoal") private var dailyGoal: Int = 2000
-    @AppStorage("targetWeight") private var targetWeight: Double = 70.0
-    @AppStorage("goalType") private var goalType: String = "Cutting"
-    @AppStorage("maintenanceCalories") private var maintenanceCalories: Int = 2500
-    @AppStorage("estimationMethod") private var estimationMethod: Int = 0
-    @AppStorage("enableCaloriesBurned") private var enableCaloriesBurned: Bool = true
-    @AppStorage("maintenanceTolerance") private var maintenanceTolerance: Double = 2.0
-    @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
-    @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
+    // --- Layout State (Loaded from Profile) ---
+    @State private var layout: [DashboardCardConfig] = []
     
-    // MARK: - Layout & View Preferences
-    @AppStorage("dashboardLayoutJSON_v2") private var dashboardLayoutJSON: String = ""
-    
-    // Independent Time Ranges for Cards
-    @AppStorage("workoutTimeRange") private var workoutTimeRangeRaw: String = TimeRange.thirtyDays.rawValue
-    @AppStorage("weightHistoryTimeRange") private var weightHistoryTimeRangeRaw: String = TimeRange.thirtyDays.rawValue
-    
+    // Time Ranges (Synced via Profile)
     var workoutTimeRange: TimeRange {
-        get { TimeRange(rawValue: workoutTimeRangeRaw) ?? .thirtyDays }
-        nonmutating set { workoutTimeRangeRaw = newValue.rawValue }
+        get { TimeRange(rawValue: profile.workoutTimeRange) ?? .thirtyDays }
+        nonmutating set { profile.workoutTimeRange = newValue.rawValue }
     }
     
     var weightHistoryTimeRange: TimeRange {
-        get { TimeRange(rawValue: weightHistoryTimeRangeRaw) ?? .thirtyDays }
-        nonmutating set { weightHistoryTimeRangeRaw = newValue.rawValue }
+        get { TimeRange(rawValue: profile.weightHistoryTimeRange) ?? .thirtyDays }
+        nonmutating set { profile.weightHistoryTimeRange = newValue.rawValue }
     }
     
-    @State private var layout: [DashboardCardConfig] = []
-    
-    // MARK: - Local State
+    // --- Local UI State ---
     @State private var showingSettings = false
     @State private var showingCustomization = false
     @State private var showingMaintenanceInfo = false
     @State private var showingReconfigureGoal = false
     @State private var visibleMethods: Set<String> = []
 
-    var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
+    // Helper Accessors
+    var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     
     var appBackgroundColor: Color {
-        isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
+        profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
     }
     
     var goalColor: Color {
-        switch GoalType(rawValue: goalType) {
+        switch GoalType(rawValue: profile.goalType) {
         case .cutting: return .blue
         case .bulking: return .blue
         case .maintenance: return .blue
@@ -80,7 +67,9 @@ struct DashboardView: View {
                     targetProgressCard
                     
                     // 2. Movable Cards
-                    ForEach(Array(layout.enumerated()), id: \.element.id) { index, card in
+                    // FIX: Iterating indices is easier for the compiler than enumerated()
+                    ForEach(layout.indices, id: \.self) { index in
+                        let card = layout[index]
                         if card.isVisible {
                             cardView(for: card.type, index: index, totalCount: layout.count)
                         }
@@ -112,6 +101,7 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(
+                    profile: profile,
                     estimatedMaintenance: viewModel.estimatedMaintenance,
                     currentWeight: weights.first?.weight
                 )
@@ -120,7 +110,9 @@ struct DashboardView: View {
                 CustomizationSheet(layout: $layout, onSave: saveLayout)
             }
             .sheet(isPresented: $showingReconfigureGoal) {
+                // FIX: Added 'profile' argument here
                 GoalConfigurationView(
+                    profile: profile,
                     appEstimatedMaintenance: viewModel.estimatedMaintenance,
                     latestWeightKg: weights.first?.weight
                 )
@@ -131,19 +123,20 @@ struct DashboardView: View {
                 Text("This is based on your weight change and your calories consumed over the last 30 days. Please note this number should only be used as a guide.")
             }
             .onAppear(perform: setupOnAppear)
+            // Refresh logic when CloudKit data changes
             .onChange(of: logs) { _, _ in refreshViewModel() }
             .onChange(of: weights) { _, _ in refreshViewModel() }
-            .onChange(of: dailyGoal) { _, _ in refreshViewModel() }
-            .onChange(of: targetWeight) { _, _ in refreshViewModel() }
-            .onChange(of: estimationMethod) { _, _ in
+            .onChange(of: profile.dailyCalorieGoal) { _, _ in refreshViewModel() }
+            .onChange(of: profile.targetWeight) { _, _ in refreshViewModel() }
+            .onChange(of: profile.estimationMethod) { _, _ in
                 refreshViewModel()
-                if let method = EstimationMethod(rawValue: estimationMethod) {
+                if let method = EstimationMethod(rawValue: profile.estimationMethod) {
                     visibleMethods = [method.displayName]
                 }
             }
-            .onChange(of: maintenanceCalories) { _, _ in refreshViewModel() }
-            .onChange(of: maintenanceTolerance) { _, _ in refreshViewModel() }
-            .onChange(of: isCalorieCountingEnabled) { _, _ in refreshViewModel() }
+            .onChange(of: profile.maintenanceCalories) { _, _ in refreshViewModel() }
+            .onChange(of: profile.maintenanceTolerance) { _, _ in refreshViewModel() }
+            .onChange(of: profile.isCalorieCountingEnabled) { _, _ in refreshViewModel() }
         }
     }
 
@@ -215,7 +208,7 @@ struct DashboardView: View {
         loadLayout()
         
         if visibleMethods.isEmpty {
-            if let method = EstimationMethod(rawValue: estimationMethod) {
+            if let method = EstimationMethod(rawValue: profile.estimationMethod) {
                 visibleMethods = [method.displayName]
             } else {
                 visibleMethods = [EstimationMethod.weightTrend30Day.displayName]
@@ -225,7 +218,8 @@ struct DashboardView: View {
     }
     
     private func loadLayout() {
-        if let data = dashboardLayoutJSON.data(using: .utf8),
+        // Load layout from the CloudKit Profile JSON string
+        if let data = profile.dashboardLayoutJSON.data(using: .utf8),
            let decoded = try? JSONDecoder().decode([DashboardCardConfig].self, from: data),
            !decoded.isEmpty {
             let validConfigs = decoded.filter { DashboardCardType(rawValue: $0.id) != nil }
@@ -238,29 +232,31 @@ struct DashboardView: View {
     }
     
     private func saveLayout() {
+        // Save layout to the CloudKit Profile JSON string
         if let data = try? JSONEncoder().encode(layout),
            let json = String(data: data, encoding: .utf8) {
-            dashboardLayoutJSON = json
+            profile.dashboardLayoutJSON = json
         }
     }
 
     private func ensureDailyLogExists() {
         let today = Calendar.current.startOfDay(for: Date())
         if !logs.contains(where: { $0.date == today }) {
-            let newItem = DailyLog(date: today, goalType: goalType)
+            let newItem = DailyLog(date: today, goalType: profile.goalType)
             modelContext.insert(newItem)
         }
     }
     
     private func refreshViewModel() {
+        // Build settings from Profile data
         let settings = DashboardSettings(
-            dailyGoal: dailyGoal,
-            targetWeight: targetWeight,
-            goalType: goalType,
-            maintenanceCalories: maintenanceCalories,
-            estimationMethod: estimationMethod,
-            enableCaloriesBurned: enableCaloriesBurned,
-            isCalorieCountingEnabled: isCalorieCountingEnabled
+            dailyGoal: profile.dailyCalorieGoal,
+            targetWeight: profile.targetWeight,
+            goalType: profile.goalType,
+            maintenanceCalories: profile.maintenanceCalories,
+            estimationMethod: profile.estimationMethod,
+            enableCaloriesBurned: profile.enableCaloriesBurned,
+            isCalorieCountingEnabled: profile.isCalorieCountingEnabled
         )
         viewModel.updateMetrics(logs: logs, weights: weights, settings: settings)
     }
@@ -269,9 +265,9 @@ struct DashboardView: View {
     
     private var targetProgressCard: some View {
         let currentWeightKg = weights.first?.weight
-        let currentDisplay = currentWeightKg?.toUserWeight(system: unitSystem)
-        let targetDisplay = targetWeight.toUserWeight(system: unitSystem)
-        let toleranceDisplay = maintenanceTolerance.toUserWeight(system: unitSystem)
+        let currentDisplay = currentWeightKg?.toUserWeight(system: profile.unitSystem)
+        let targetDisplay = profile.targetWeight.toUserWeight(system: profile.unitSystem)
+        let toleranceDisplay = profile.maintenanceTolerance.toUserWeight(system: profile.unitSystem)
         
         return VStack(spacing: 16) {
             if let current = currentDisplay, let rawCurrent = currentWeightKg, rawCurrent > 0 {
@@ -294,7 +290,7 @@ struct DashboardView: View {
                         }
                         .offset(x: 6, y: -10)
                         
-                        Text("Goal (\(goalType))").font(.caption).fontWeight(.medium).foregroundColor(.secondary)
+                        Text("Goal (\(profile.goalType))").font(.caption).fontWeight(.medium).foregroundColor(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text("\(targetDisplay, specifier: "%.1f")").font(.title3).fontWeight(.semibold).foregroundStyle(goalColor)
                             Text(weightLabel).font(.caption).foregroundColor(.secondary)
@@ -307,7 +303,7 @@ struct DashboardView: View {
                         Image(systemName: "checkmark.circle.fill").font(.largeTitle).foregroundStyle(goalColor)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Target Reached").font(.headline).foregroundColor(.primary)
-                            if goalType == GoalType.maintenance.rawValue {
+                            if profile.goalType == GoalType.maintenance.rawValue {
                                 Text("Within \(toleranceDisplay, specifier: "%.1f") \(weightLabel)").font(.caption).foregroundColor(.secondary)
                             } else {
                                 Text("Great work!").font(.caption).foregroundColor(.secondary)
@@ -371,7 +367,7 @@ struct DashboardView: View {
         VStack(spacing: 6) {
             Text(metric.period).font(.caption).fontWeight(.medium).foregroundColor(.secondary)
             if let val = metric.value {
-                let converted = val.toUserWeight(system: unitSystem)
+                let converted = val.toUserWeight(system: profile.unitSystem)
                 HStack(spacing: 4) {
                     HStack(spacing: 0) {
                         Text(val > 0 ? "+" : "")
@@ -393,19 +389,19 @@ struct DashboardView: View {
     }
     
     private func checkGoalReached(current: Double) -> Bool {
-        if goalType == GoalType.cutting.rawValue { return current <= targetWeight }
-        else if goalType == GoalType.bulking.rawValue { return current >= targetWeight }
-        else { return abs(current - targetWeight) <= maintenanceTolerance }
+        if profile.goalType == GoalType.cutting.rawValue { return current <= profile.targetWeight }
+        else if profile.goalType == GoalType.bulking.rawValue { return current >= profile.targetWeight }
+        else { return abs(current - profile.targetWeight) <= profile.maintenanceTolerance }
     }
     
     private func projectionComparisonCard(index: Int, totalCount: Int) -> some View {
         let currentWeightKg = weights.first?.weight ?? 0
-        let currentDisplay = currentWeightKg.toUserWeight(system: unitSystem)
-        let targetDisplay = targetWeight.toUserWeight(system: unitSystem)
-        let toleranceDisplay = maintenanceTolerance.toUserWeight(system: unitSystem)
+        let currentDisplay = currentWeightKg.toUserWeight(system: profile.unitSystem)
+        let targetDisplay = profile.targetWeight.toUserWeight(system: profile.unitSystem)
+        let toleranceDisplay = profile.maintenanceTolerance.toUserWeight(system: profile.unitSystem)
         
         let projections = viewModel.projectionPoints.filter { visibleMethods.contains($0.method) }
-            .map { ProjectionPoint(date: $0.date, weight: $0.weight.toUserWeight(system: unitSystem), method: $0.method) }
+            .map { ProjectionPoint(date: $0.date, weight: $0.weight.toUserWeight(system: profile.unitSystem), method: $0.method) }
         
         let allValues = projections.map { $0.weight } + [currentDisplay, targetDisplay]
         let lowerBound = max(0, (allValues.min() ?? 0) - 5)
@@ -430,7 +426,7 @@ struct DashboardView: View {
                 Menu {
                     Text("Visible Projections")
                     ForEach(EstimationMethod.allCases) { method in
-                        if isCalorieCountingEnabled || method == .weightTrend30Day {
+                        if profile.isCalorieCountingEnabled || method == .weightTrend30Day {
                             Toggle(method.displayName, isOn: bindingForMethod(method.displayName))
                         }
                     }
@@ -446,7 +442,7 @@ struct DashboardView: View {
                 Chart {
                     RuleMark(y: .value("Target", targetDisplay)).foregroundStyle(.green).lineStyle(StrokeStyle(lineWidth: 2, dash: [5]))
                         .annotation(position: .top, alignment: .leading) { Text("Target").font(.caption).foregroundColor(.green) }
-                    if goalType == GoalType.maintenance.rawValue {
+                    if profile.goalType == GoalType.maintenance.rawValue {
                         RuleMark(y: .value("Upper", targetDisplay + toleranceDisplay)).foregroundStyle(.green.opacity(0.3))
                         RuleMark(y: .value("Lower", targetDisplay - toleranceDisplay)).foregroundStyle(.green.opacity(0.3))
                     }
@@ -562,7 +558,7 @@ struct DashboardView: View {
             filteredWeights = weights
         }
         
-        let history = filteredWeights.map { (date: $0.date, weight: $0.weight.toUserWeight(system: unitSystem)) }
+        let history = filteredWeights.map { (date: $0.date, weight: $0.weight.toUserWeight(system: profile.unitSystem)) }
         let allWeights = history.map { $0.weight }
         let lowerBound = max(0, (allWeights.min() ?? 0) - 5)
         let upperBound = (allWeights.max() ?? 100) + 5
@@ -629,7 +625,7 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - 4. Customization Sheet
+// MARK: - Customization Sheet
 struct CustomizationSheet: View {
     @Binding var layout: [DashboardCardConfig]
     var onSave: () -> Void

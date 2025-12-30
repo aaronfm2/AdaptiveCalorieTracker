@@ -1,8 +1,13 @@
 import SwiftUI
+import SwiftData
 
 struct MainTabView: View {
-    // ... [Keep properties] ...
+    // --- CLOUD SYNC: Profile passed from RootView ---
+    @Bindable var profile: UserProfile
+    
+    // --- LOCAL STATE: Tutorial status remains local ---
     @AppStorage("hasSeenAppTutorial") private var hasSeenAppTutorial: Bool = false
+    
     @State private var currentTutorialStepIndex = 0
     @State private var selectedTab = 0
     
@@ -24,7 +29,7 @@ struct MainTabView: View {
             highlights: [.target(.settings)]
         ),
         TutorialStep(
-            id: 2, // NEW
+            id: 2,
             title: "Customize Layout",
             description: "Tap the Sliders icon to customise your dashboard.",
             tabIndex: 0,
@@ -91,12 +96,26 @@ struct MainTabView: View {
     var body: some View {
         ZStack {
             TabView(selection: $selectedTab) {
-                DashboardView().tabItem { Label("Dashboard", systemImage: "chart.bar.fill") }.tag(0)
-                ContentView().tabItem { Label("Logs", systemImage: "list.bullet.clipboard.fill") }.tag(1)
-                WorkoutTabView().tabItem { Label("Workouts", systemImage: "figure.strengthtraining.traditional") }.tag(2)
-                WeightTrackerView().tabItem { Label("Weight", systemImage: "scalemass.fill") }.tag(3)
+                // Pass the profile to DashboardView
+                DashboardView(profile: profile)
+                    .tabItem { Label("Dashboard", systemImage: "chart.bar.fill") }
+                    .tag(0)
+                
+                // Note: You will likely need to update LogTabView and WeightTrackerView
+                // to accept 'profile' as well if they use shared settings.
+                LogTabView()
+                    .tabItem { Label("Logs", systemImage: "list.bullet.clipboard.fill") }
+                    .tag(1)
+                
+                WorkoutTabView()
+                    .tabItem { Label("Workouts", systemImage: "figure.strengthtraining.traditional") }
+                    .tag(2)
+                
+                WeightTrackerView(profile: profile)
+                    .tabItem { Label("Weight", systemImage: "scalemass.fill") }
+                    .tag(3)
             }
-            // --- FIX 1: Force Bottom Tabs on iPad ---
+            // Fix: Force Bottom Tabs on iPad
             .environment(\.horizontalSizeClass, .compact)
             
             if !hasSeenAppTutorial {
@@ -117,7 +136,6 @@ struct MainTabView: View {
                     isLastStep: currentTutorialStepIndex == tutorialSteps.count - 1
                 )
                 .zIndex(10)
-                // --- FIX 2: Ignore Safe Area to cover the Tab Bar ---
                 .ignoresSafeArea()
             }
         }

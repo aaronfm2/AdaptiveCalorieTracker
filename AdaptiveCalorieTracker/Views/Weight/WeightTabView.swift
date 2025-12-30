@@ -2,23 +2,23 @@ import SwiftUI
 import SwiftData
 
 struct WeightTrackerView: View {
+    // --- CLOUD SYNC: Injected Profile ---
+    @Bindable var profile: UserProfile
+    
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \WeightEntry.date, order: .reverse) private var weights: [WeightEntry]
     
     @Query(filter: #Predicate<GoalPeriod> { $0.endDate == nil }) private var activeGoalPeriods: [GoalPeriod]
     @Query(sort: \GoalPeriod.startDate, order: .reverse) private var allGoalPeriods: [GoalPeriod]
     
-    @AppStorage("goalType") private var currentGoalType: String = GoalType.cutting.rawValue
-    @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
-    @AppStorage("targetWeight") private var targetWeight: Double = 70.0 // Stored in KG
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
+    // REMOVED: @AppStorage variables (now using profile.*)
 
     var appBackgroundColor: Color {
-        isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
+        profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
     }
     
     var cardBackgroundColor: Color {
-        isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
+        profile.isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
     }
     
     @State private var showingAddWeight = false
@@ -26,7 +26,7 @@ struct WeightTrackerView: View {
     @State private var showingReconfigureGoal = false
     
     // --- Edit State ---
-    @State private var selectedEntry: WeightEntry? // For editing
+    @State private var selectedEntry: WeightEntry?
     
     // --- Add Sheet State ---
     @State private var newWeight: String = ""
@@ -38,7 +38,12 @@ struct WeightTrackerView: View {
         DataManager(modelContext: modelContext)
     }
     
-    var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
+    var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
+    
+    // Helper to simplify the ViewBuilder and fix compiler timeout
+    private var startWeightForCurrentPeriod: Double {
+        activeGoalPeriods.first?.startWeight ?? weights.last?.weight ?? weights.first?.weight ?? 70.0
+    }
 
     var body: some View {
         NavigationStack {
@@ -49,10 +54,10 @@ struct WeightTrackerView: View {
                         HStack(spacing: 12) {
                             JourneyProgressCard(
                                 currentKg: current.weight,
-                                startKg: activeGoalPeriods.first?.startWeight ?? weights.last?.weight ?? current.weight,
-                                targetKg: targetWeight,
-                                goalType: currentGoalType,
-                                unitSystem: unitSystem,
+                                startKg: startWeightForCurrentPeriod,
+                                targetKg: profile.targetWeight,
+                                goalType: profile.goalType,
+                                unitSystem: profile.unitSystem,
                                 cardColor: cardBackgroundColor,
                                 onEdit: { showingReconfigureGoal = true }
                             )
@@ -80,7 +85,7 @@ struct WeightTrackerView: View {
                                             .font(.caption).foregroundColor(.secondary)
                                     }
                                     Spacer()
-                                    Text("\(entry.weight.toUserWeight(system: unitSystem), specifier: "%.1f") \(weightLabel)")
+                                    Text("\(entry.weight.toUserWeight(system: profile.unitSystem), specifier: "%.1f") \(weightLabel)")
                                         .fontWeight(.semibold)
                                         .font(.title3)
                                         .foregroundColor(.primary)
@@ -189,10 +194,10 @@ struct WeightTrackerView: View {
             .sheet(item: $selectedEntry) { entry in
                 EditWeightView(
                     entry: entry,
-                    unitSystem: unitSystem,
+                    unitSystem: profile.unitSystem,
                     weightLabel: weightLabel,
                     onSave: { d, w, n in
-                        dataManager.updateWeightEntry(entry, newDate: d, newWeight: w, newNote: n, goalType: currentGoalType)
+                        dataManager.updateWeightEntry(entry, newDate: d, newWeight: w, newNote: n, goalType: profile.goalType)
                         selectedEntry = nil
                     }
                 )
@@ -201,7 +206,9 @@ struct WeightTrackerView: View {
                 WeightStatsView()
             }
             .sheet(isPresented: $showingReconfigureGoal) {
+                // FIX: Pass profile to GoalConfigurationView
                 GoalConfigurationView(
+                    profile: profile,
                     appEstimatedMaintenance: nil,
                     latestWeightKg: weights.first?.weight
                 )
@@ -231,8 +238,8 @@ struct WeightTrackerView: View {
 
     private func saveWeight() {
         guard let userValue = Double(newWeight) else { return }
-        let storedValue = userValue.toStoredWeight(system: unitSystem)
-        dataManager.addWeightEntry(date: selectedDate, weight: storedValue, goalType: currentGoalType, note: newNote)
+        let storedValue = userValue.toStoredWeight(system: profile.unitSystem)
+        dataManager.addWeightEntry(date: selectedDate, weight: storedValue, goalType: profile.goalType, note: newNote)
         newWeight = ""
         newNote = ""
         showingAddWeight = false
@@ -359,7 +366,6 @@ struct JourneyProgressCard: View {
                 
                 Spacer()
                 
-                // --- NEW: Settings Cog ---
                 Button(action: onEdit) {
                     Image(systemName: "gearshape.fill")
                         .font(.caption)
@@ -369,7 +375,6 @@ struct JourneyProgressCard: View {
             
             Spacer()
             
-            // Progress Bar
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.gray.opacity(0.2))
@@ -420,7 +425,6 @@ struct StreakCard: View {
         
         guard let lastDate = uniqueDays.first else { return 0 }
         
-        // Check if streak is alive (last entry must be today or yesterday)
         let today = Calendar.current.startOfDay(for: Date())
         let diff = Calendar.current.dateComponents([.day], from: lastDate, to: today).day ?? 0
         if diff > 1 { return 0 }

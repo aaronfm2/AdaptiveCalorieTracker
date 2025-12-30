@@ -2,49 +2,38 @@ import SwiftUI
 import SwiftData
 
 struct OnboardingView: View {
-    @Binding var isCompleted: Bool
     @Environment(\.modelContext) private var modelContext
     
+    // MARK: - Navigation State
     @State private var currentStep = 0
-    @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
     
-    // --- NEW: Dark Mode Support ---
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
-    
-    // --- NEW: Calorie Counting Toggle ---
-    @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
-    
-    // --- Prediction Method (Defaults to 0) ---
-    @AppStorage("estimationMethod") private var estimationMethod: Int = 0
-    
-    @AppStorage("userGender") private var gender: Gender = .male
-    
-    // --- NEW: Maintenance Tolerance ---
-    @AppStorage("maintenanceTolerance") private var maintenanceTolerance: Double = 2.0
+    // MARK: - Local Data Collection (Transferred to UserProfile on completion)
+    @State private var unitSystem: UnitSystem = .metric
+    @State private var isDarkMode: Bool = true
+    @State private var gender: Gender = .male
     
     @State private var currentWeight: Double? = nil
     @State private var targetWeight: Double? = nil
     @State private var goalType: GoalType = .cutting
     
-    @State private var knowsDetails: Bool = false
-    @State private var targetDate: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date())!
+    // Strategy & Calorie Settings
+    @State private var isCalorieCountingEnabled: Bool = true
+    @State private var trackCaloriesBurned: Bool = false
+    @State private var maintenanceTolerance: Double = 2.0 // Stored in Kg
     
+    // Calculation State
+    @State private var knowsDetails: Bool = false
     @State private var maintenanceInput: String = ""
     @State private var dailyGoalInput: String = ""
-    @State private var trackCaloriesBurned: Bool = false
+    @State private var targetDate: Date = Calendar.current.date(byAdding: .month, value: 3, to: Date())!
     
-    @AppStorage("dailyCalorieGoal") private var storedDailyGoal: Int = 2000
-    @AppStorage("targetWeight") private var storedTargetWeight: Double = 70.0
-    @AppStorage("goalType") private var storedGoalType: String = GoalType.cutting.rawValue
-    @AppStorage("maintenanceCalories") private var storedMaintenance: Int = 2500
-    @AppStorage("enableCaloriesBurned") private var storedEnableCaloriesBurned: Bool = true
-    
+    // MARK: - Helpers
     private var dataManager: DataManager {
-            DataManager(modelContext: modelContext)
-        }
+        DataManager(modelContext: modelContext)
+    }
 
     var unitLabel: String {
-        return unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg"
+        return unitSystem == .imperial ? "lbs" : "kg"
     }
     
     var appBackgroundColor: Color {
@@ -52,9 +41,15 @@ struct OnboardingView: View {
     }
     
     func toKg(_ value: Double) -> Double {
-        return unitSystem == UnitSystem.imperial.rawValue ? value / 2.20462 : value
+        return unitSystem == .imperial ? value / 2.20462 : value
+    }
+    
+    // Helper to convert stored Kg to display unit
+    func toDisplay(_ kgValue: Double) -> Double {
+        return unitSystem == .imperial ? kgValue * 2.20462 : kgValue
     }
 
+    // MARK: - Body
     var body: some View {
         ZStack {
             appBackgroundColor.ignoresSafeArea()
@@ -103,24 +98,23 @@ struct OnboardingView: View {
                 .padding()
             }
         }
+        .preferredColorScheme(isDarkMode ? .dark : .light)
     }
     
+    // MARK: - Validation
     var cannotMoveForward: Bool {
         if currentStep == 1 { return currentWeight == nil }
         if currentStep == 2 {
-            // Maintenance check
             if goalType == .maintenance { return false }
-            
             guard let t = targetWeight, let c = currentWeight else { return true }
-            
-            // Validation check logic
             if goalType == .cutting && t >= c { return true }
             if goalType == .bulking && t <= c { return true }
-            
             return false
         }
         return false
     }
+    
+    // MARK: - Steps
     
     var welcomeStep: some View {
         VStack(spacing: 20) {
@@ -141,10 +135,15 @@ struct OnboardingView: View {
             Section(header: Text("Preferences")) {
                 Picker("Units", selection: $unitSystem) {
                     ForEach(UnitSystem.allCases, id: \.self) { system in
-                        Text(system.rawValue).tag(system.rawValue)
+                        Text(system.rawValue).tag(system)
                     }
                 }
                 .pickerStyle(.segmented)
+                
+                Toggle(isOn: $isDarkMode) {
+                    Label("Dark Mode", systemImage: "moon.fill")
+                        .foregroundColor(.primary)
+                }
             }
             Section(header: Text("Biometrics")) {
                 Picker("Gender", selection: $gender) {
@@ -176,7 +175,6 @@ struct OnboardingView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                // Note: removed implicit determineGoalType logic, user selects manually
             }
             
             if goalType == .maintenance {
@@ -184,9 +182,10 @@ struct OnboardingView: View {
                     HStack {
                         Text("Tolerance (+/- \(unitLabel))")
                         Spacer()
+                        // Binding to convert display value to/from stored kg value
                         TextField("2.0", value: Binding(
-                            get: { maintenanceTolerance.toUserWeight(system: unitSystem) },
-                            set: { maintenanceTolerance = $0.toStoredWeight(system: unitSystem) }
+                            get: { toDisplay(maintenanceTolerance) },
+                            set: { maintenanceTolerance = toKg($0) }
                         ), format: .number)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
@@ -329,15 +328,7 @@ struct OnboardingView: View {
         }
     }
     
-    // determineGoalType removed as it is now user-selected
-    
-    var goalTypeColor: Color {
-        switch goalType {
-        case .cutting: return .green
-        case .bulking: return .red
-        case .maintenance: return .blue
-        }
-    }
+    // MARK: - Logic
     
     func estimateMaintenance() {
         guard let cWeight = currentWeight else { return }
@@ -345,6 +336,10 @@ struct OnboardingView: View {
         let multiplier: Double = (gender == .male) ? 32.0 : 29.0
         let estimated = Int(weightKg * multiplier)
         maintenanceInput = String(estimated)
+        // If daily goal isn't set yet, default it to maintenance initially
+        if dailyGoalInput.isEmpty {
+            dailyGoalInput = String(estimated)
+        }
     }
     
     func calculateGoalFromDate() {
@@ -384,43 +379,52 @@ struct OnboardingView: View {
     func completeOnboarding() {
         guard let finalCurrent = currentWeight else { return }
         
-        // Resolve final target weight based on goal
+        // 1. Resolve final target
         let finalTarget: Double
         if goalType == .maintenance {
             finalTarget = finalCurrent
         } else {
-            guard let t = targetWeight else { return }
-            finalTarget = t
+            finalTarget = targetWeight ?? finalCurrent
         }
         
+        // 2. Normalize to storage units (Kg)
         let storedCurrentWeightKg = toKg(finalCurrent)
         let storedTargetWeightKg = toKg(finalTarget)
         
-        storedGoalType = goalType.rawValue
-        storedTargetWeight = storedTargetWeightKg
-        storedEnableCaloriesBurned = trackCaloriesBurned
+        // 3. Resolve Calorie values
+        let storedMaintenance = Int(maintenanceInput) ?? 2500
+        let storedDailyGoal = Int(dailyGoalInput) ?? 2000
         
-        // Force default estimation method
-        estimationMethod = 0
+        // 4. Create and Save UserProfile (This syncs to CloudKit)
+        let profile = UserProfile()
+        profile.unitSystem = unitSystem.rawValue
+        profile.isDarkMode = isDarkMode
+        profile.gender = gender.rawValue
         
-        if isCalorieCountingEnabled {
-            storedMaintenance = Int(maintenanceInput) ?? 2500
-            storedDailyGoal = Int(dailyGoalInput) ?? 2000
-        }
+        profile.goalType = goalType.rawValue
+        profile.targetWeight = storedTargetWeightKg
+        profile.maintenanceTolerance = maintenanceTolerance // Already in Kg
         
+        profile.isCalorieCountingEnabled = isCalorieCountingEnabled
+        profile.enableCaloriesBurned = trackCaloriesBurned
+        profile.dailyCalorieGoal = storedDailyGoal
+        profile.maintenanceCalories = storedMaintenance
+        profile.estimationMethod = 0 // Default to simple
+        
+        modelContext.insert(profile)
+        
+        // 5. Create First Weight Entry
         let firstEntry = WeightEntry(date: Date(), weight: storedCurrentWeightKg, note: "")
         modelContext.insert(firstEntry)
                 
-        // Start First Goal Period
+        // 6. Start First Goal Period
         dataManager.startNewGoalPeriod(
-            goalType: storedGoalType,
+            goalType: goalType.rawValue,
             startWeight: storedCurrentWeightKg,
             targetWeight: storedTargetWeightKg,
             dailyCalorieGoal: storedDailyGoal,
             maintenanceCalories: storedMaintenance
         )
-                
-        isCompleted = true
     }
 }
 

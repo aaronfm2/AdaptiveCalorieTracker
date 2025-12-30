@@ -5,11 +5,6 @@ import SwiftData
 struct AdaptiveCalorieTrackerApp: App {
     @StateObject private var healthManager = HealthManager()
     
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
-    
-    // --- NEW: Dark Mode State ---
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
-    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DailyLog.self,
@@ -19,7 +14,8 @@ struct AdaptiveCalorieTrackerApp: App {
             WorkoutTemplate.self,
             TemplateExerciseEntry.self,
             ExerciseDefinition.self,
-            GoalPeriod.self
+            GoalPeriod.self,
+            UserProfile.self
         ])
         let modelConfiguration = ModelConfiguration(
             schema: schema,
@@ -29,12 +25,9 @@ struct AdaptiveCalorieTrackerApp: App {
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            
-            // We must run this on the MainActor
             Task { @MainActor in
                 DefaultExercises.seed(context: container.mainContext)
             }
-            
             return container
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
@@ -43,16 +36,27 @@ struct AdaptiveCalorieTrackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if hasCompletedOnboarding {
-                    MainTabView()
-                        .environmentObject(healthManager)
-                } else {
-                    OnboardingView(isCompleted: $hasCompletedOnboarding)
-                }
-            }
-            .preferredColorScheme(isDarkMode ? .dark : .light)
+            RootView()
+                .environmentObject(healthManager)
         }
         .modelContainer(sharedModelContainer)
+    }
+}
+
+struct RootView: View {
+    @Query var userProfiles: [UserProfile]
+    // Note: 'hasSeenAppTutorial' stays in AppStorage so it resets on re-install
+    @AppStorage("hasSeenAppTutorial") private var hasSeenAppTutorial: Bool = false
+    
+    var body: some View {
+        Group {
+            if let profile = userProfiles.first {
+                MainTabView(profile: profile)
+                    .preferredColorScheme(profile.isDarkMode ? .dark : .light)
+            } else {
+                OnboardingView()
+                    .preferredColorScheme(.dark) // Default for onboarding
+            }
+        }
     }
 }

@@ -2,6 +2,9 @@ import SwiftUI
 import SwiftData
 
 struct SettingsView: View {
+    // --- CLOUD SYNC: Injected Profile ---
+    @Bindable var profile: UserProfile
+    
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var modelContext
     // --- Access HealthManager to trigger sync ---
@@ -17,27 +20,11 @@ struct SettingsView: View {
     @State private var exportURL: URL?
     @State private var showingShareSheet = false
     
-    // App Storage
-    @AppStorage("dailyCalorieGoal") private var dailyGoal: Int = 2000
-    @AppStorage("targetWeight") private var targetWeight: Double = 70.0
-    @AppStorage("goalType") private var goalType: String = "Cutting"
-    @AppStorage("maintenanceCalories") private var maintenanceCalories: Int = 2500
-    @AppStorage("estimationMethod") private var estimationMethod: Int = 0
-    @AppStorage("enableCaloriesBurned") private var enableCaloriesBurned: Bool = true
-    @AppStorage("maintenanceTolerance") private var maintenanceTolerance: Double = 2.0
-    @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
-    @AppStorage("userGender") private var userGender: Gender = .male
-    @AppStorage("isCalorieCountingEnabled") private var isCalorieCountingEnabled: Bool = true
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
+    // Helper accessors for Profile
+    var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     
-    // --- NEW: HealthKit Toggle ---
-    @AppStorage("enableHealthKitSync") private var enableHealthKitSync: Bool = true
-    
-    var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
-    
-    // Helper for Goal Color (Used ONLY for status text)
     var goalColor: Color {
-        switch GoalType(rawValue: goalType) {
+        switch GoalType(rawValue: profile.goalType) {
         case .cutting: return .green
         case .bulking: return .red
         case .maintenance: return .blue
@@ -50,7 +37,7 @@ struct SettingsView: View {
             Form {
                 // MARK: - Section 1: General Preferences
                 Section {
-                    Picker(selection: $unitSystem) {
+                    Picker(selection: $profile.unitSystem) {
                         ForEach(UnitSystem.allCases, id: \.self) { system in
                             Text(system.rawValue).tag(system.rawValue)
                         }
@@ -59,14 +46,15 @@ struct SettingsView: View {
                             .foregroundColor(.primary)
                     }
                     
-                    Toggle(isOn: $isDarkMode) {
+                    Toggle(isOn: $profile.isDarkMode) {
                         Label("Dark Mode", systemImage: "moon")
                             .foregroundColor(.primary)
                     }
                     
-                    Picker(selection: $userGender) {
+                    // Note: Profile stores gender as String, so we tag with rawValue
+                    Picker(selection: $profile.gender) {
                         ForEach(Gender.allCases, id: \.self) { gender in
-                            Text(gender.rawValue).tag(gender)
+                            Text(gender.rawValue).tag(gender.rawValue)
                         }
                     } label: {
                         Label("Gender", systemImage: "person")
@@ -78,32 +66,36 @@ struct SettingsView: View {
                 
                 // MARK: - Section 2: Tracking Configuration
                 Section {
-                    Toggle(isOn: $isCalorieCountingEnabled) {
+                    Toggle(isOn: $profile.isCalorieCountingEnabled) {
                         Label("Enable Calorie Counting", systemImage: "flame")
                             .foregroundColor(.primary)
                     }
                     
-                    if isCalorieCountingEnabled {
-                        Toggle(isOn: $enableCaloriesBurned) {
+                    if profile.isCalorieCountingEnabled {
+                        Toggle(isOn: $profile.enableCaloriesBurned) {
                             Label("Track Calories Burned", systemImage: "figure.run")
                                 .foregroundColor(.primary)
                         }
                     }
+                    
+                    Toggle(isOn: $profile.enableHealthKitSync) {
+                        Label("HealthKit Sync", systemImage: "heart.text.square")
+                            .foregroundColor(.primary)
+                    }
                 } header: {
                     Text("Tracking")
                 } footer: {
-                    if isCalorieCountingEnabled {
+                    if profile.isCalorieCountingEnabled {
                         Text("Enable Apple Health to automatically import nutrition data from apps like MyFitnessPal, Cronometer, or Lose It!.")
                     }
                 }
                 
                 // MARK: - Section 3: Goal Dashboard
-                if isCalorieCountingEnabled {
+                if profile.isCalorieCountingEnabled {
                     Section {
                         // Strategy Summary
                         LabeledContent {
-                            // Keep color here as it indicates status (Green/Red/Blue)
-                            Text(goalType)
+                            Text(profile.goalType)
                                 .fontWeight(.semibold)
                                 .foregroundColor(goalColor)
                         } label: {
@@ -112,12 +104,12 @@ struct SettingsView: View {
                         }
                         
                         LabeledContent("Daily Target") {
-                            Text("\(dailyGoal) kcal")
+                            Text("\(profile.dailyCalorieGoal) kcal")
                                 .monospacedDigit()
                         }
                         
                         LabeledContent("Target Weight") {
-                            Text("\(targetWeight.toUserWeight(system: unitSystem), specifier: "%.1f") \(weightLabel)")
+                            Text("\(profile.targetWeight.toUserWeight(system: profile.unitSystem), specifier: "%.1f") \(weightLabel)")
                         }
                         
                         // Action Button (Neutral)
@@ -133,7 +125,7 @@ struct SettingsView: View {
                     
                     // Technical Settings
                     Section {
-                        Picker(selection: $estimationMethod) {
+                        Picker(selection: $profile.estimationMethod) {
                             ForEach(EstimationMethod.allCases) { method in
                                 Text(method.displayName).tag(method.rawValue)
                             }
@@ -143,10 +135,10 @@ struct SettingsView: View {
                         }
                         
                         // Maintenance Tolerance
-                        if goalType == GoalType.maintenance.rawValue {
+                        if profile.goalType == GoalType.maintenance.rawValue {
                             let toleranceBinding = Binding<Double>(
-                                get: { maintenanceTolerance.toUserWeight(system: unitSystem) },
-                                set: { maintenanceTolerance = $0.toStoredWeight(system: unitSystem) }
+                                get: { profile.maintenanceTolerance.toUserWeight(system: profile.unitSystem) },
+                                set: { profile.maintenanceTolerance = $0.toStoredWeight(system: profile.unitSystem) }
                             )
                             HStack {
                                 Label("Weight Tolerance", systemImage: "arrow.left.and.right")
@@ -217,7 +209,9 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showingReconfigureGoal) {
+                // Ensure GoalConfigurationView is updated to accept 'profile'
                 GoalConfigurationView(
+                    profile: profile,
                     appEstimatedMaintenance: estimatedMaintenance,
                     latestWeightKg: currentWeight
                 )
@@ -320,7 +314,7 @@ struct SettingsView: View {
             // Flatten Exercises
             var exerciseDetails: [String] = []
             for w in dayWorkouts {
-                // FIX: Safely unwrap exercises
+                // Handle optional exercises relationship
                 for ex in (w.exercises ?? []) {
                     var details = ex.name
                     if ex.isCardio {
