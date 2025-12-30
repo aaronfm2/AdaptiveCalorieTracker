@@ -97,6 +97,7 @@ struct DashboardView: View {
                         Image(systemName: "slider.horizontal.3")
                             .foregroundColor(.blue)
                     }
+                    .spotlightTarget(.dashboardCustomize)
                 }
                 
                 // Trailing: Settings

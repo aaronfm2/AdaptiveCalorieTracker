@@ -129,6 +129,7 @@ struct WeightTrackerView: View {
                         Image(systemName: "chart.bar")
                             .font(.body)
                     }
+                    .spotlightTarget(.weightStats)
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {

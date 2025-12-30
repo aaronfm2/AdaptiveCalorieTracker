@@ -3,10 +3,12 @@ import SwiftUI
 // MARK: - 1. Identifiers
 enum SpotlightTargetID: String, CaseIterable {
     case settings
+    case dashboardCustomize
     case addLog
     case addWorkout
     case library
     case addWeight
+    case weightStats
 }
 
 enum SpotlightArea: Hashable {
@@ -146,4 +148,3 @@ struct TutorialOverlayView: View {
         }
     }
 }
-

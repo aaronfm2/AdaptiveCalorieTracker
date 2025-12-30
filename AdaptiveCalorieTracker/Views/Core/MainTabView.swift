@@ -8,7 +8,6 @@ struct MainTabView: View {
     
     @State private var spotlightRects: [String: CGRect] = [:]
     
-    // ... [Keep tutorialSteps] ...
     private let tutorialSteps: [TutorialStep] = [
         TutorialStep(
             id: 0,
@@ -25,49 +24,63 @@ struct MainTabView: View {
             highlights: [.target(.settings)]
         ),
         TutorialStep(
-            id: 2,
+            id: 2, // NEW
+            title: "Customize Layout",
+            description: "Tap the Sliders icon to customise your dashboard.",
+            tabIndex: 0,
+            highlights: [.target(.dashboardCustomize)]
+        ),
+        TutorialStep(
+            id: 3,
             title: "Apple Health Sync",
-            description: "Sync data from Apple Health. If you use other apps (like MyFitnessPal), ensure they are connected to Apple Health.",
+            description: "Sync data from Apple Health. If you use other apps which write to Apple Health (like MyFitnessPal) and want to sync that data.",
             tabIndex: 0,
             highlights: []
         ),
         TutorialStep(
-            id: 3,
+            id: 4,
             title: "Logs Tab",
             description: "Track your daily nutrition here. This data syncs automatically with Apple Health.",
             tabIndex: 1,
             highlights: [.tab(index: 1)]
         ),
         TutorialStep(
-            id: 4,
+            id: 5,
             title: "Add Entries",
             description: "Use the + button to manually add calories or macros.",
             tabIndex: 1,
             highlights: [.target(.addLog)]
         ),
         TutorialStep(
-            id: 5,
+            id: 6,
             title: "Workouts Tab",
             description: "Track your training sessions and view history.",
             tabIndex: 2,
             highlights: [.tab(index: 2)]
         ),
         TutorialStep(
-            id: 6,
+            id: 7,
             title: "Workout Controls",
             description: "Top Right: Start a new workout.\nTop Left: Manage your Exercise Library.",
             tabIndex: 2,
             highlights: [.target(.addWorkout), .target(.library)]
         ),
         TutorialStep(
-            id: 7,
+            id: 8,
             title: "Weight Tab",
-            description: "Keep track of your weigh-ins here.",
+            description: "Keep track of your weigh-ins.",
             tabIndex: 3,
             highlights: [.tab(index: 3)]
         ),
         TutorialStep(
-            id: 8,
+            id: 9,
+            title: "Phase Stats",
+            description: "Review your Bulking, Cutting, and Maintenance phases.",
+            tabIndex: 3,
+            highlights: [.target(.weightStats)]
+        ),
+        TutorialStep(
+            id: 10,
             title: "Log Weight",
             description: "Tap the + button to log today's weight.",
             tabIndex: 3,
