@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 import SwiftUI
-import Security
 
 struct DefaultExercises {
     static let all: [ExerciseDefinition] = [
@@ -61,9 +60,9 @@ struct DefaultExercises {
     /// Checks if defaults have been added using Keychain persistence.
     @MainActor
     static func seed(context: ModelContext) {
-        // 1. Check Keychain. This survives app deletion/reinstall.
+        // 1. Check Keychain via Manager. This survives app deletion/reinstall.
         // If true, it means we have seeded before, so we do NOTHING and let CloudKit sync.
-        if KeychainHelper.hasSeeded() {
+        if KeychainManager.standard.hasSeededDefaultExercises() {
             print("Keychain says we have seeded before. Skipping to avoid duplicates.")
             return
         }
@@ -75,7 +74,7 @@ struct DefaultExercises {
         
         if count > 0 {
             print("Database has exercises. Marking Keychain and skipping.")
-            KeychainHelper.setSeeded()
+            KeychainManager.standard.setSeededDefaultExercises()
             return
         }
         
@@ -89,46 +88,11 @@ struct DefaultExercises {
         // Save context and update Keychain
         do {
             try context.save()
-            KeychainHelper.setSeeded()
+            KeychainManager.standard.setSeededDefaultExercises()
             // Legacy flag update just in case
             UserDefaults.standard.set(true, forKey: "hasSeededDefaultExercises")
         } catch {
             print("Failed to seed exercises: \(error)")
         }
-    }
-}
-
-// MARK: - Keychain Helper
-// Encapsulates logic to read/write a flag that persists across reinstalls
-class KeychainHelper {
-    private static let service = "com.repscale.app.seeding"
-    private static let account = "hasSeededDefaultExercises"
-    
-    static func setSeeded() {
-        let data = "true".data(using: .utf8)!
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: data
-        ]
-        
-        // Delete any existing item to avoid error, then add
-        SecItemDelete(query as CFDictionary)
-        SecItemAdd(query as CFDictionary, nil)
-    }
-    
-    static func hasSeeded() -> Bool {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        return status == errSecSuccess
     }
 }

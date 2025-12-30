@@ -4,7 +4,10 @@ import Security
 class KeychainManager {
     static let standard = KeychainManager()
     private let service = "com.repscale.app.storage"
+    
+    // Keys
     private let onboardingKey = "hasCompletedOnboarding"
+    private let seedingKey = "hasSeededDefaultExercises"
     
     private init() {}
     
@@ -20,6 +23,16 @@ class KeychainManager {
     
     func clearOnboardingStatus() {
         delete(key: onboardingKey)
+    }
+    
+    // MARK: - Seeding Status
+    
+    func setSeededDefaultExercises() {
+        save(key: seedingKey, value: "true")
+    }
+    
+    func hasSeededDefaultExercises() -> Bool {
+        return read(key: seedingKey) == "true"
     }
     
     // MARK: - Core Helpers
