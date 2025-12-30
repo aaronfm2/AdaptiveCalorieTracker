@@ -5,9 +5,11 @@ import SwiftData
 class WeightEntry {
     var date: Date = Date()
     var weight: Double = 0.0
+    var note: String = ""
     
-    init(date: Date = Date(), weight: Double) {
+    init(date: Date = Date(), weight: Double, note: String) {
         self.date = date
         self.weight = weight
+        self.note = note
     }
 }

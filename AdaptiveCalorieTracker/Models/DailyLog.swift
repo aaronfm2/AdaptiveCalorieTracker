@@ -5,6 +5,7 @@ import SwiftData
 final class DailyLog {
     @Attribute(.unique) var date: Date = Date()
     var weight: Double?
+    var note: String = ""
     
     // Total values (HealthKit + Manual)
     var caloriesConsumed: Int = 0
@@ -37,6 +38,7 @@ final class DailyLog {
         self.protein = protein
         self.carbs = carbs
         self.fat = fat
+        self.note = note
     }
     
     // Helper to detect if any override is active

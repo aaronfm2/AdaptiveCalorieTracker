@@ -15,24 +15,38 @@ class DataManager {
     // MARK: - Weight Operations
     
     /// Adds a weight entry and ensures the DailyLog is synced correctly.
-    func addWeightEntry(date: Date, weight: Double, goalType: String) {
-        // 1. Create and Insert the Weight Entry
-        let entry = WeightEntry(date: date, weight: weight)
+    func addWeightEntry(date: Date, weight: Double, goalType: String, note: String = "") {
+        let entry = WeightEntry(date: date, weight: weight, note: note)
         modelContext.insert(entry)
-        
-        // 2. Sync to Daily Log
         syncWeightToLog(date: date, weight: weight, goalType: goalType)
+    }
+    
+    /// Updates an existing weight entry and re-syncs logs if date or weight changes.
+    func updateWeightEntry(_ entry: WeightEntry, newDate: Date, newWeight: Double, newNote: String, goalType: String) {
+        let oldDate = entry.date
+        
+        // 1. Update Properties
+        entry.date = newDate
+        entry.weight = newWeight
+        entry.note = newNote
+        
+        // 2. Handle Log Sync
+        if !Calendar.current.isDate(oldDate, inSameDayAs: newDate) {
+            // Date changed: Repair the OLD day's log (it might need to revert to a previous weight)
+            updateLogAfterWeightDeletion(date: oldDate)
+            
+            // Sync the NEW day's log
+            syncWeightToLog(date: newDate, weight: newWeight, goalType: goalType)
+        } else {
+            // Same day: Just sync this day
+            syncWeightToLog(date: newDate, weight: newWeight, goalType: goalType)
+        }
     }
     
     /// Deletes a weight entry and repairs the DailyLog to reflect the change.
     func deleteWeightEntry(_ entry: WeightEntry) {
         let date = entry.date
-        
-        // 1. Delete the entry
         modelContext.delete(entry)
-        
-        // 2. Repair the DailyLog
-        // We need to find if there are ANY other weights for this day.
         updateLogAfterWeightDeletion(date: date)
     }
     
@@ -47,7 +61,6 @@ class DataManager {
         do {
             if let existingLog = try modelContext.fetch(descriptor).first {
                 existingLog.weight = weight
-                // Backfill goal type if missing
                 if existingLog.goalType == nil {
                     existingLog.goalType = goalType
                 }
@@ -63,10 +76,7 @@ class DataManager {
     private func updateLogAfterWeightDeletion(date: Date) {
         let normalizedDate = Calendar.current.startOfDay(for: date)
         
-        // 1. Fetch all REMAINING weights for this day
-        // Note: We cannot use #Predicate with complex date logic easily in SwiftData sometimes,
-        // but fetching all and filtering is safe for small datasets.
-        // A more performant way is to construct a range predicate if needed.
+        // Fetch all REMAINING weights for this day
         let start = normalizedDate
         let end = Calendar.current.date(byAdding: .day, value: 1, to: start)!
         
@@ -78,7 +88,7 @@ class DataManager {
         do {
             let remainingWeights = try modelContext.fetch(descriptor)
             
-            // 2. Fetch the DailyLog
+            // Fetch the DailyLog
             let logDescriptor = FetchDescriptor<DailyLog>(
                 predicate: #Predicate { $0.date == normalizedDate }
             )
@@ -96,37 +106,28 @@ class DataManager {
             print("DataManager: Failed to update log after deletion: \(error)")
         }
     }
+    
     // MARK: - Goal Period Management
         
-        func startNewGoalPeriod(goalType: String, startWeight: Double, targetWeight: Double, dailyCalorieGoal: Int, maintenanceCalories: Int) {
-            let now = Date()
-            
-            // 1. Find and close the currently active period
-            // We look for periods where endDate is nil
-            let descriptor = FetchDescriptor<GoalPeriod>(
-                predicate: #Predicate { $0.endDate == nil }
-            )
-            
-            do {
-                let activePeriods = try modelContext.fetch(descriptor)
-                for period in activePeriods {
-                    period.endDate = now
-                }
-            } catch {
-                print("DataManager: Failed to fetch active goal periods: \(error)")
-            }
-            
-            // 2. Create the new active period
-            let newPeriod = GoalPeriod(
-                startDate: now,
-                goalType: goalType,
-                startWeight: startWeight,
-                targetWeight: targetWeight,
-                dailyCalorieGoal: dailyCalorieGoal,
-                maintenanceCalories: maintenanceCalories
-            )
-            
-            modelContext.insert(newPeriod)
-            print("DataManager: Started new goal period: \(goalType)")
+    func startNewGoalPeriod(goalType: String, startWeight: Double, targetWeight: Double, dailyCalorieGoal: Int, maintenanceCalories: Int) {
+        let now = Date()
+        let descriptor = FetchDescriptor<GoalPeriod>(predicate: #Predicate { $0.endDate == nil })
+        
+        do {
+            let activePeriods = try modelContext.fetch(descriptor)
+            for period in activePeriods { period.endDate = now }
+        } catch {
+            print("DataManager: Failed to fetch active goal periods: \(error)")
         }
+        
+        let newPeriod = GoalPeriod(
+            startDate: now,
+            goalType: goalType,
+            startWeight: startWeight,
+            targetWeight: targetWeight,
+            dailyCalorieGoal: dailyCalorieGoal,
+            maintenanceCalories: maintenanceCalories
+        )
+        modelContext.insert(newPeriod)
+    }
 }

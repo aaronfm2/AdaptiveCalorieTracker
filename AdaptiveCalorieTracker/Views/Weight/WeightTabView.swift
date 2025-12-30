@@ -5,17 +5,12 @@ struct WeightTrackerView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \WeightEntry.date, order: .reverse) private var weights: [WeightEntry]
     
-    // Fetch the active goal period to get the true "Start Weight" for the current goal
     @Query(filter: #Predicate<GoalPeriod> { $0.endDate == nil }) private var activeGoalPeriods: [GoalPeriod]
-    
-    // Fetch ALL goal periods to display history labels
     @Query(sort: \GoalPeriod.startDate, order: .reverse) private var allGoalPeriods: [GoalPeriod]
     
     @AppStorage("goalType") private var currentGoalType: String = GoalType.cutting.rawValue
     @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
     @AppStorage("targetWeight") private var targetWeight: Double = 70.0 // Stored in KG
-    
-    // MARK: - Dark Mode & Colors
     @AppStorage("isDarkMode") private var isDarkMode: Bool = true
 
     var appBackgroundColor: Color {
@@ -29,7 +24,13 @@ struct WeightTrackerView: View {
     @State private var showingAddWeight = false
     @State private var showingStats = false
     @State private var showingReconfigureGoal = false
+    
+    // --- Edit State ---
+    @State private var selectedEntry: WeightEntry? // For editing
+    
+    // --- Add Sheet State ---
     @State private var newWeight: String = ""
+    @State private var newNote: String = ""
     @State private var selectedDate: Date = Date()
     @FocusState private var isInputFocused: Bool
 
@@ -46,8 +47,6 @@ struct WeightTrackerView: View {
                 if let current = weights.first {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            
-                            // 1. Journey Progress Card
                             JourneyProgressCard(
                                 currentKg: current.weight,
                                 startKg: activeGoalPeriods.first?.startWeight ?? weights.last?.weight ?? current.weight,
@@ -57,8 +56,6 @@ struct WeightTrackerView: View {
                                 cardColor: cardBackgroundColor,
                                 onEdit: { showingReconfigureGoal = true }
                             )
-                            
-                            // 2. Streak Card
                             StreakCard(weights: weights, cardColor: cardBackgroundColor)
                         }
                         .padding([.horizontal, .top])
@@ -70,39 +67,53 @@ struct WeightTrackerView: View {
                 // MARK: - Weight List
                 List {
                     ForEach(weights) { entry in
-                        VStack(alignment: .leading, spacing: 6) {
-                            // 1. Date and Weight Row
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(entry.date, format: .dateTime.day().month().year())
-                                        .font(.body)
-                                    Text(entry.date, format: .dateTime.hour().minute())
-                                        .font(.caption).foregroundColor(.secondary)
+                        Button(action: {
+                            selectedEntry = entry
+                        }) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(entry.date, format: .dateTime.day().month().year())
+                                            .font(.body)
+                                            .foregroundColor(.primary)
+                                        Text(entry.date, format: .dateTime.hour().minute())
+                                            .font(.caption).foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Text("\(entry.weight.toUserWeight(system: unitSystem), specifier: "%.1f") \(weightLabel)")
+                                        .fontWeight(.semibold)
+                                        .font(.title3)
+                                        .foregroundColor(.primary)
                                 }
-                                Spacer()
-                                Text("\(entry.weight.toUserWeight(system: unitSystem), specifier: "%.1f") \(weightLabel)")
-                                    .fontWeight(.semibold)
-                                    .font(.title3)
-                            }
-                            
-                            // 2. Goal Change Labels
-                            let events = getGoalEvents(for: entry.date)
-                            if !events.isEmpty {
-                                HStack(spacing: 6) {
-                                    ForEach(events, id: \.self) { event in
-                                        Text(event)
-                                            .font(.caption2)
-                                            .fontWeight(.bold)
-                                            .padding(.vertical, 3)
-                                            .padding(.horizontal, 8)
-                                            .background(event.contains("Started") ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
-                                            .foregroundColor(event.contains("Started") ? .green : .red)
-                                            .cornerRadius(6)
+                                
+                                if !entry.note.isEmpty {
+                                    Text(entry.note)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(2)
+                                        .padding(.top, 2)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                
+                                // Goal Change Labels
+                                let events = getGoalEvents(for: entry.date)
+                                if !events.isEmpty {
+                                    HStack(spacing: 6) {
+                                        ForEach(events, id: \.self) { event in
+                                            Text(event)
+                                                .font(.caption2)
+                                                .fontWeight(.bold)
+                                                .padding(.vertical, 3)
+                                                .padding(.horizontal, 8)
+                                                .background(event.contains("Started") ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                                                .foregroundColor(event.contains("Started") ? .green : .red)
+                                                .cornerRadius(6)
+                                        }
                                     }
                                 }
                             }
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 2)
                         .listRowBackground(cardBackgroundColor)
                     }
                     .onDelete(perform: deleteWeight)
@@ -124,6 +135,7 @@ struct WeightTrackerView: View {
                     Button(action: {
                         selectedDate = Date()
                         newWeight = ""
+                        newNote = ""
                         showingAddWeight = true
                     }) {
                         Image(systemName: "plus.circle.fill").font(.title2)
@@ -151,6 +163,9 @@ struct WeightTrackerView: View {
                             }
                         }
                         Section {
+                            TextField("Optional Note", text: $newNote)
+                        }
+                        Section {
                             Button("Save Entry") { saveWeight() }
                                 .bold()
                                 .frame(maxWidth: .infinity)
@@ -170,14 +185,21 @@ struct WeightTrackerView: View {
                 }
                 .presentationDetents([.medium])
             }
+            .sheet(item: $selectedEntry) { entry in
+                EditWeightView(
+                    entry: entry,
+                    unitSystem: unitSystem,
+                    weightLabel: weightLabel,
+                    onSave: { d, w, n in
+                        dataManager.updateWeightEntry(entry, newDate: d, newWeight: w, newNote: n, goalType: currentGoalType)
+                        selectedEntry = nil
+                    }
+                )
+            }
             .sheet(isPresented: $showingStats) {
                 WeightStatsView()
             }
-            // --- Reconfigure Goal Sheet ---
             .sheet(isPresented: $showingReconfigureGoal) {
-                // Reusing GoalConfigurationView from DashboardView.swift
-                // appEstimatedMaintenance is nil here as we don't have the dashboard VM,
-                // but the view handles nil by defaulting to formula/manual.
                 GoalConfigurationView(
                     appEstimatedMaintenance: nil,
                     latestWeightKg: weights.first?.weight
@@ -209,8 +231,9 @@ struct WeightTrackerView: View {
     private func saveWeight() {
         guard let userValue = Double(newWeight) else { return }
         let storedValue = userValue.toStoredWeight(system: unitSystem)
-        dataManager.addWeightEntry(date: selectedDate, weight: storedValue, goalType: currentGoalType)
+        dataManager.addWeightEntry(date: selectedDate, weight: storedValue, goalType: currentGoalType, note: newNote)
         newWeight = ""
+        newNote = ""
         showingAddWeight = false
     }
     
@@ -220,6 +243,78 @@ struct WeightTrackerView: View {
                 dataManager.deleteWeightEntry(weights[index])
             }
         }
+    }
+}
+
+// MARK: - Edit View
+
+struct EditWeightView: View {
+    let entry: WeightEntry
+    let unitSystem: String
+    let weightLabel: String
+    var onSave: (Date, Double, String) -> Void
+    @Environment(\.dismiss) var dismiss
+    
+    @State private var editDate: Date
+    @State private var editWeightStr: String
+    @State private var editNote: String
+    
+    init(entry: WeightEntry, unitSystem: String, weightLabel: String, onSave: @escaping (Date, Double, String) -> Void) {
+        self.entry = entry
+        self.unitSystem = unitSystem
+        self.weightLabel = weightLabel
+        self.onSave = onSave
+        
+        _editDate = State(initialValue: entry.date)
+        _editNote = State(initialValue: entry.note)
+        
+        // Convert stored KG to user preference for display
+        let userVal = entry.weight.toUserWeight(system: unitSystem)
+        _editWeightStr = State(initialValue: String(format: "%.1f", userVal))
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    DatePicker("Date", selection: $editDate, displayedComponents: [.date, .hourAndMinute])
+                }
+                
+                Section {
+                    HStack {
+                        Text("Weight")
+                        Spacer()
+                        TextField("0.0", text: $editWeightStr)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                        Text(weightLabel).foregroundColor(.secondary)
+                    }
+                }
+                
+                Section(header: Text("Note")) {
+                    TextField("Optional Note", text: $editNote)
+                }
+                
+                Section {
+                    Button("Save Changes") {
+                        if let val = Double(editWeightStr) {
+                            // Convert back to stored KG
+                            let storedVal = val.toStoredWeight(system: unitSystem)
+                            onSave(editDate, storedVal, editNote)
+                        }
+                    }
+                    .bold()
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .navigationTitle("Edit Entry")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 

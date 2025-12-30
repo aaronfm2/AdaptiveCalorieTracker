@@ -359,7 +359,7 @@ struct OnboardingView: View {
             storedDailyGoal = Int(dailyGoalInput) ?? 2000
         }
         
-        let firstEntry = WeightEntry(date: Date(), weight: storedCurrentWeightKg)
+        let firstEntry = WeightEntry(date: Date(), weight: storedCurrentWeightKg, note: "")
                 modelContext.insert(firstEntry)
                 
                 // Start First Goal Period
