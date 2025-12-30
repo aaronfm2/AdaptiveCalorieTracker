@@ -107,7 +107,7 @@ struct MainTabView: View {
                     .tabItem { Label("Logs", systemImage: "list.bullet.clipboard.fill") }
                     .tag(1)
                 
-                WorkoutTabView()
+                WorkoutTabView(profile: profile)
                     .tabItem { Label("Workouts", systemImage: "figure.strengthtraining.traditional") }
                     .tag(2)
                 

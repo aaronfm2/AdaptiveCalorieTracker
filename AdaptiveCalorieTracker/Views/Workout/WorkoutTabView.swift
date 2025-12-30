@@ -2,6 +2,9 @@ import SwiftUI
 import SwiftData
 
 struct WorkoutTabView: View {
+    // --- CLOUD SYNC: Injected Profile ---
+    @Bindable var profile: UserProfile
+    
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Workout.date, order: .reverse) private var workouts: [Workout]
     
@@ -10,21 +13,18 @@ struct WorkoutTabView: View {
     @State private var showingLibrary = false
     @State private var workoutToEdit: Workout? = nil
     
-    @AppStorage("trackedMuscles") private var trackedMusclesString: String = "Chest,Back,Legs,Shoulders,Abs,Cardio,Biceps,Triceps"
+    // MARK: - Computed Properties
     
-    // MARK: - Dark Mode & Colours
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
-
     var appBackgroundColor: Color {
-        isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
+        profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
     }
     
     var cardBackgroundColor: Color {
-        isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
+        profile.isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
     }
     
-    var trackedMuscles: [String] {
-        trackedMusclesString.components(separatedBy: ",").filter { !$0.isEmpty }
+    var trackedMusclesList: [String] {
+        profile.trackedMuscles.components(separatedBy: ",").filter { !$0.isEmpty }
     }
 
     var body: some View {
@@ -32,29 +32,29 @@ struct WorkoutTabView: View {
             List {
                 // 1. Calendar View
                 Section {
-                    WorkoutCalendarView(workouts: workouts)
+                    WorkoutCalendarView(workouts: workouts, profile: profile)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 5)
                 }
-                .listRowBackground(Color.clear) // Clear so the Calendar's internal card background shows
+                .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
                 
                 // 2. Recovery Counters
                 Section(header: Text("Recovery Tracker")) {
-                    if trackedMuscles.isEmpty {
+                    if trackedMusclesList.isEmpty {
                         Text("Select muscles to track recovery time.")
                             .font(.caption).foregroundColor(.secondary)
                             .listRowBackground(cardBackgroundColor)
                     } else {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 15)], spacing: 15) {
-                            ForEach(trackedMuscles, id: \.self) { muscle in
-                                RecoveryCard(muscle: muscle, days: daysSinceLastTrained(muscle))
+                            ForEach(trackedMusclesList, id: \.self) { muscle in
+                                RecoveryCard(muscle: muscle, days: daysSinceLastTrained(muscle), profile: profile)
                             }
                         }
                         .padding(.vertical, 5)
                         .listRowBackground(Color.clear)
                         
-                        // --- UPDATED BUTTON ---
+                        // Settings Button
                         Button(action: { showingSettings = true }) {
                             HStack {
                                 Image(systemName: "slider.horizontal.3")
@@ -83,7 +83,7 @@ struct WorkoutTabView: View {
                             .listRowBackground(cardBackgroundColor)
                     } else {
                         ForEach(workouts) { workout in
-                            NavigationLink(destination: WorkoutDetailView(workout: workout)) {
+                            NavigationLink(destination: WorkoutDetailView(workout: workout, profile: profile)) {
                                 HStack {
                                     VStack(alignment: .leading) {
                                         Text(workout.date, format: .dateTime.day().month())
@@ -100,7 +100,7 @@ struct WorkoutTabView: View {
                                         .cornerRadius(8)
                                 }
                             }
-                            .listRowBackground(cardBackgroundColor) // Apply card color to rows
+                            .listRowBackground(cardBackgroundColor)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button(role: .destructive) {
                                     deleteWorkout(workout)
@@ -121,11 +121,10 @@ struct WorkoutTabView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden) // Hides system default
-            .background(appBackgroundColor)   // Applies custom background
+            .scrollContentBackground(.hidden)
+            .background(appBackgroundColor)
             .navigationTitle("Workouts")
             .toolbar {
-                // --- NEW: Library Button ---
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showingLibrary = true }) {
                         Image(systemName: "dumbbell")
@@ -145,10 +144,11 @@ struct WorkoutTabView: View {
                 }
             }
             .sheet(isPresented: $showingAddWorkout) {
-                AddWorkoutView(workoutToEdit: workoutToEdit)
+                AddWorkoutView(workoutToEdit: workoutToEdit, profile: profile)
             }
             .sheet(isPresented: $showingSettings) {
-                MuscleSelectionView(selectedMusclesString: $trackedMusclesString)
+                // Pass the profile binding for muscles
+                MuscleSelectionView(selectedMusclesString: $profile.trackedMuscles)
             }
             .sheet(isPresented: $showingLibrary) {
                 ExerciseLibraryView()
@@ -175,23 +175,21 @@ struct WorkoutTabView: View {
 struct RecoveryCard: View {
     let muscle: String
     let days: Int?
+    var profile: UserProfile
     
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
     var cardBackgroundColor: Color {
-        isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
+        profile.isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
     }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Muscle Name at the top
             Text(muscle)
                 .font(.headline)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             
-            Spacer() // Pushes the status text to the bottom
+            Spacer()
             
-            // Status at the bottom
             if let d = days {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text("\(d)")
@@ -205,7 +203,7 @@ struct RecoveryCard: View {
                 Text("ago")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                    .offset(y: -4) // Slight visual adjustment to tuck it under the number
+                    .offset(y: -4)
             } else {
                 Text("Not trained")
                     .font(.subheadline)
@@ -218,7 +216,7 @@ struct RecoveryCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 100) // --- FIX: Enforces uniform height for all cards ---
+        .frame(height: 100)
         .background(cardBackgroundColor)
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 2)
@@ -228,16 +226,15 @@ struct RecoveryCard: View {
 // Subview: Simple Calendar Grid
 struct WorkoutCalendarView: View {
     let workouts: [Workout]
+    let profile: UserProfile
+    
     let days = ["S", "M", "T", "W", "T", "F", "S"]
     @State private var currentMonth = Date()
-    
-    // --- UPDATED STATE ---
     @State private var selectedWorkouts: [Workout] = []
     @State private var isNavigating = false
     
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
     var cardBackgroundColor: Color {
-        isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
+        profile.isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
     }
     
     var body: some View {
@@ -273,19 +270,15 @@ struct WorkoutCalendarView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 10) {
                 ForEach(daysInMonth, id: \.self) { date in
                     if let date = date {
-                        // Find ALL workouts for this day ---
                         let dailyWorkouts = workouts.filter({ Calendar.current.isDate($0.date, inSameDayAs: date) })
                         let hasWorkout = !dailyWorkouts.isEmpty
                         
-                        // Content for the day cell
                         VStack(spacing: 2) {
                             Text("\(Calendar.current.component(.day, from: date))")
                                 .font(.caption2)
                             
-                            // Dot indicator
                             if hasWorkout {
                                 HStack(spacing: 2) {
-                                    // If multiple, show up to 2 dots, otherwise 1
                                     ForEach(dailyWorkouts.prefix(dailyWorkouts.count > 1 ? 2 : 1)) { w in
                                         Circle()
                                             .fill(categoryColor(w.category))
@@ -315,8 +308,7 @@ struct WorkoutCalendarView: View {
             }
         }
         .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(cardBackgroundColor)) // Updated background
-        // --- NAVIGATION ---
+        .background(RoundedRectangle(cornerRadius: 12).fill(cardBackgroundColor))
         .background(
             NavigationLink(
                 destination: destinationView,
@@ -328,13 +320,12 @@ struct WorkoutCalendarView: View {
         )
     }
     
-    // --- Computes where to go based on how many workouts are on that day ---
     @ViewBuilder
     var destinationView: some View {
         if selectedWorkouts.count == 1, let first = selectedWorkouts.first {
-            WorkoutDetailView(workout: first)
+            WorkoutDetailView(workout: first, profile: profile)
         } else {
-            DailyWorkoutListView(workouts: selectedWorkouts)
+            DailyWorkoutListView(workouts: selectedWorkouts, profile: profile)
         }
     }
     
@@ -358,10 +349,8 @@ struct WorkoutCalendarView: View {
         guard let range = calendar.range(of: .day, in: .month, for: currentMonth),
               let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: currentMonth)) else { return [] }
         
-        let weekday = calendar.component(.weekday, from: firstDay) // 1 = Sun, 2 = Mon...
-        
+        let weekday = calendar.component(.weekday, from: firstDay)
         var days: [Date?] = Array(repeating: nil, count: weekday - 1)
-        
         for day in 1...range.count {
             if let date = calendar.date(byAdding: .day, value: day - 1, to: firstDay) {
                 days.append(date)
@@ -371,13 +360,14 @@ struct WorkoutCalendarView: View {
     }
 }
 
-// --- NEW VIEW: List for days with multiple workouts ---
+// List for days with multiple workouts
 struct DailyWorkoutListView: View {
     let workouts: [Workout]
+    let profile: UserProfile
     
     var body: some View {
         List(workouts) { workout in
-            NavigationLink(destination: WorkoutDetailView(workout: workout)) {
+            NavigationLink(destination: WorkoutDetailView(workout: workout, profile: profile)) {
                 HStack {
                     VStack(alignment: .leading) {
                         Text(workout.category)
@@ -398,20 +388,17 @@ struct MuscleSelectionView: View {
     @Binding var selectedMusclesString: String
     @Environment(\.dismiss) var dismiss
     
-    let allMuscles = MuscleGroup.allCases
-    
     var body: some View {
         NavigationStack {
             List {
                 ForEach(MuscleGroup.allCases, id: \.self) { muscle in
-                HStack {
-                    Text(muscle.rawValue)
-                    Spacer()
-                    // Check against rawValue
-                    if selectedMusclesString.contains(muscle.rawValue) {
-                        Image(systemName: "checkmark").foregroundColor(.blue)
+                    HStack {
+                        Text(muscle.rawValue)
+                        Spacer()
+                        if selectedMusclesString.contains(muscle.rawValue) {
+                            Image(systemName: "checkmark").foregroundColor(.blue)
+                        }
                     }
-                }
                     .contentShape(Rectangle())
                     .onTapGesture {
                         toggleMuscle(muscle.rawValue)

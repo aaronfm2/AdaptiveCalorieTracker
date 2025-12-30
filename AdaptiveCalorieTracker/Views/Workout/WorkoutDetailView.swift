@@ -2,27 +2,24 @@ import SwiftUI
 
 struct WorkoutDetailView: View {
     let workout: Workout
+    var profile: UserProfile // Injected
     
     @State private var isEditing = false
-    
-    @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
-    @AppStorage("isDarkMode") private var isDarkMode: Bool = true
 
     var appBackgroundColor: Color {
-        isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
+        profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
     }
 
     var cardBackgroundColor: Color {
-        isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
+        profile.isDarkMode ? Color(red: 0.153, green: 0.153, blue: 0.165) : Color.white
     }
 
-    var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
-    var distLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "mi" : "km" }
+    var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
+    var distLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "mi" : "km" }
 
     // Helper to group exercises by name while keeping order
     var groupedExercises: [(name: String, sets: [ExerciseEntry])] {
         var groups: [(name: String, sets: [ExerciseEntry])] = []
-        // FIX: Unwrap workout.exercises
         for exercise in (workout.exercises ?? []) {
             if let last = groups.last, last.name == exercise.name {
                 groups[groups.count - 1].sets.append(exercise)
@@ -60,7 +57,6 @@ struct WorkoutDetailView: View {
             .listRowBackground(cardBackgroundColor)
             
             Section("Exercises") {
-                // FIX: Check if exercises array is nil or empty
                 if (workout.exercises ?? []).isEmpty {
                     Text("No exercises logged").italic().foregroundColor(.secondary)
                 } else {
@@ -85,7 +81,7 @@ struct WorkoutDetailView: View {
                                         if exercise.isCardio {
                                             HStack(spacing: 8) {
                                                 if let dist = exercise.distance, dist > 0 {
-                                                    Text("\(dist.toUserDistance(system: unitSystem), specifier: "%.2f") \(distLabel)")
+                                                    Text("\(dist.toUserDistance(system: profile.unitSystem), specifier: "%.2f") \(distLabel)")
                                                 }
                                                 if let time = exercise.duration, time > 0 {
                                                     Text("\(Int(time)) min")
@@ -93,7 +89,7 @@ struct WorkoutDetailView: View {
                                             }
                                             .font(.callout).monospacedDigit().foregroundColor(.blue)
                                         } else {
-                                            let displayWeight = (exercise.weight ?? 0.0).toUserWeight(system: unitSystem)
+                                            let displayWeight = (exercise.weight ?? 0.0).toUserWeight(system: profile.unitSystem)
                                             
                                             Text("\(exercise.reps ?? 0) x \(displayWeight, specifier: "%.1f") \(weightLabel)")
                                                 .monospacedDigit()
@@ -134,7 +130,7 @@ struct WorkoutDetailView: View {
             }
         }
         .sheet(isPresented: $isEditing) {
-            AddWorkoutView(workoutToEdit: workout)
+            AddWorkoutView(workoutToEdit: workout, profile: profile)
         }
     }
 }

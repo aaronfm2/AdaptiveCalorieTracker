@@ -24,10 +24,12 @@ final class UserProfile {
     var enableHealthKitSync: Bool = true
     
     // MARK: - Dashboard Customization
-    // We store the JSON string for the card layout here so it syncs
     var dashboardLayoutJSON: String = ""
     var workoutTimeRange: String = "30 Days"
     var weightHistoryTimeRange: String = "30 Days"
+    
+    // MARK: - Workout Preferences (NEW)
+    var trackedMuscles: String = "Chest,Back,Legs,Shoulders,Abs,Cardio,Biceps,Triceps"
     
     init() {
         self.createdAt = Date()

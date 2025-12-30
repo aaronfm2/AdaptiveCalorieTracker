@@ -9,8 +9,8 @@ struct AddWorkoutView: View {
     // Fetch templates for the "Load Template" sheet
     @Query(sort: \WorkoutTemplate.name) private var templates: [WorkoutTemplate]
     
-    // --- NEW: Unit System Preference ---
-    @AppStorage("unitSystem") private var unitSystem: String = UnitSystem.metric.rawValue
+    // --- CLOUD SYNC: Injected Profile ---
+    var profile: UserProfile
     
     // The workout we are editing (if any)
     let workoutToEdit: Workout?
@@ -18,8 +18,9 @@ struct AddWorkoutView: View {
     // The ViewModel responsible for this View's state
     @State private var viewModel: AddWorkoutViewModel
     
-    init(workoutToEdit: Workout?) {
+    init(workoutToEdit: Workout?, profile: UserProfile) {
         self.workoutToEdit = workoutToEdit
+        self.profile = profile
         _viewModel = State(initialValue: AddWorkoutViewModel(workoutToEdit: workoutToEdit))
     }
     
@@ -30,7 +31,7 @@ struct AddWorkoutView: View {
                 exercisesSection
                 addExerciseSection
                 
-                // New Rest Timer Section
+                // Rest Timer Section
                 RestTimerSection()
                 
                 notesSection
@@ -152,8 +153,8 @@ extension AddWorkoutView {
             ForEach(viewModel.groupedExercises, id: \.name) { group in
                 Section {
                     ForEach(Array(group.exercises.enumerated()), id: \.element) { index, ex in
-                        // --- UPDATED: Pass unitSystem to the row ---
-                        EditExerciseRow(exercise: ex, index: index, unitSystem: unitSystem)
+                        // --- UPDATED: Pass profile.unitSystem ---
+                        EditExerciseRow(exercise: ex, index: index, unitSystem: profile.unitSystem)
                             .swipeActions(edge: .leading) {
                                 Button {
                                     viewModel.duplicateExercise(ex)
