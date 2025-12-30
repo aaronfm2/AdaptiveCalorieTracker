@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 @Model
-class WeightEntry {
+final class WeightEntry {
     var date: Date = Date()
     var weight: Double = 0.0
     var note: String = ""

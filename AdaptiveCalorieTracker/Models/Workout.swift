@@ -32,6 +32,9 @@ final class ExerciseEntry {
     var distance: Double? // Kilometers
     var isCardio: Bool = false
     
+    // FIX: Added inverse relationship required by CloudKit
+    var workout: Workout?
+    
     init(name: String, reps: Int? = nil, weight: Double? = nil, duration: Double? = nil, distance: Double? = nil, isCardio: Bool = false, note: String = "") {
         self.name = name
         self.reps = reps
@@ -71,6 +74,9 @@ final class TemplateExerciseEntry {
     var duration: Double?
     var distance: Double?
     var isCardio: Bool = false
+    
+    // FIX: Added inverse relationship required by CloudKit
+    var template: WorkoutTemplate?
     
     init(name: String, reps: Int? = nil, weight: Double? = nil, duration: Double? = nil, distance: Double? = nil, isCardio: Bool = false, note: String = "") {
         self.name = name

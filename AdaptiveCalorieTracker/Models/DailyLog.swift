@@ -3,7 +3,9 @@ import SwiftData
 
 @Model
 final class DailyLog {
-    @Attribute(.unique) var date: Date = Date()
+    // FIX: Removed @Attribute(.unique) as CloudKit does not support unique constraints
+    var date: Date = Date()
+    
     var weight: Double?
     var note: String = ""
     
