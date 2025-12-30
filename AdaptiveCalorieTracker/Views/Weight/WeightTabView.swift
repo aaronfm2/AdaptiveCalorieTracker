@@ -196,11 +196,11 @@ struct WeightTrackerView: View {
             return Calendar.current.isDate(end, inSameDayAs: date) &&
                    !Calendar.current.isDate(p.startDate, inSameDayAs: date)
         }) {
-            events.append("\(significantEnd.goalType) Ended")
+            events.append("\(significantEnd.goalType) Goal Ended")
         }
         
         if let latestStart = allGoalPeriods.first(where: { Calendar.current.isDate($0.startDate, inSameDayAs: date) }) {
-             events.append("\(latestStart.goalType) Started")
+             events.append("\(latestStart.goalType) Goal Started")
         }
         
         return events
