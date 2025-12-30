@@ -34,14 +34,24 @@ struct DashboardView: View {
     var appBackgroundColor: Color {
         isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
     }
+    
+    // Dynamic Theme Color based on Goal
+    var goalColor: Color {
+        switch GoalType(rawValue: goalType) {
+        case .cutting: return .green
+        case .bulking: return .red
+        case .maintenance: return .blue
+        default: return .blue
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     targetProgressCard
-                    weightChangeCard
                     projectionComparisonCard
+                    weightChangeCard
                     weightTrendCard
                     workoutDistributionCard
                 }
@@ -54,11 +64,11 @@ struct DashboardView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
+                            .foregroundColor(.primary)
                     }
                     .spotlightTarget(.settings)
                 }
             }
-            // Present the new, separate SettingsView
             .sheet(isPresented: $showingSettings) {
                 SettingsView(
                     estimatedMaintenance: viewModel.estimatedMaintenance,
@@ -68,7 +78,7 @@ struct DashboardView: View {
             .alert("About Estimated Maintenance", isPresented: $showingMaintenanceInfo) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("This is based on your weight change and your calories consumed over the last 30 days. Please note this number should only be used as a guide, the accuracy will be dependant on accuracy of calories submitted and small weight fluctuations can impact this value")
+                Text("This is based on your weight change and your calories consumed over the last 30 days. Please note this number should only be used as a guide.")
             }
             .onAppear(perform: setupOnAppear)
             .onChange(of: logs) { _, _ in refreshViewModel() }
@@ -123,6 +133,138 @@ struct DashboardView: View {
     
     // MARK: - Dashboard Cards
     
+    private var targetProgressCard: some View {
+        let currentWeightKg = weights.first?.weight
+        let currentDisplay = currentWeightKg?.toUserWeight(system: unitSystem)
+        let targetDisplay = targetWeight.toUserWeight(system: unitSystem)
+        let toleranceDisplay = maintenanceTolerance.toUserWeight(system: unitSystem)
+        
+        return VStack(spacing: 16) {
+            if let current = currentDisplay, let rawCurrent = currentWeightKg, rawCurrent > 0 {
+                // Top Row: Current vs Target
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Current Weight")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                        
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(current, specifier: "%.1f")")
+                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .foregroundStyle(goalColor) // Colored Number
+                            Text(weightLabel)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("Goal (\(goalType))")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                        
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(targetDisplay, specifier: "%.1f")")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(goalColor) // Colored Number
+                            Text(weightLabel)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                Divider()
+                
+                // Bottom Row: Days Remaining or Status
+                if checkGoalReached(current: rawCurrent) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.largeTitle)
+                            .foregroundStyle(goalColor)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Target Reached")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            if goalType == GoalType.maintenance.rawValue {
+                                Text("Within \(toleranceDisplay, specifier: "%.1f") \(weightLabel)")
+                                    .font(.caption).foregroundColor(.secondary)
+                            } else {
+                                Text("Great work!")
+                                    .font(.caption).foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer()
+                    }
+                } else {
+                    if let daysLeft = viewModel.daysRemaining {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Estimated Time")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.secondary)
+                                
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text("\(daysLeft)")
+                                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                                        .foregroundStyle(goalColor) // Colored Number
+                                    Text("days")
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                Text(viewModel.logicDescription)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            
+                            Image(systemName: "hourglass")
+                                .font(.system(size: 36))
+                                .foregroundStyle(goalColor.opacity(0.3)) // Subtle Icon Color
+                        }
+                    } else {
+                        // Warning / No Estimate
+                        HStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.title2)
+                                .foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Estimate Unavailable")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Text(viewModel.progressWarningMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+            } else {
+                Text("Log your weight to see progress")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+        .padding(20)
+        // Colored Background Tint
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(goalColor.opacity(0.1)) // 10% opacity of the goal color
+        )
+    }
+    
     private var weightChangeCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Weight Change").font(.headline)
@@ -167,52 +309,6 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.1)))
-    }
-    
-    private var targetProgressCard: some View {
-        let currentWeightKg = weights.first?.weight
-        let currentDisplay = currentWeightKg?.toUserWeight(system: unitSystem)
-        let targetDisplay = targetWeight.toUserWeight(system: unitSystem)
-        let toleranceDisplay = maintenanceTolerance.toUserWeight(system: unitSystem)
-        
-        return VStack(spacing: 12) {
-            if let current = currentDisplay, let rawCurrent = currentWeightKg, rawCurrent > 0 {
-                VStack(spacing: 4) {
-                    Text("Current Weight: \(current, specifier: "%.1f") \(weightLabel)")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                    Text("Goal: \(targetDisplay, specifier: "%.1f") \(weightLabel) (\(goalType))")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                
-                if checkGoalReached(current: rawCurrent) {
-                    Text("Target Reached!")
-                        .font(.title).bold()
-                        .foregroundColor(.green)
-                    if goalType == GoalType.maintenance.rawValue {
-                        Text("Within \(toleranceDisplay, specifier: "%.1f") \(weightLabel) of goal").font(.caption).foregroundColor(.secondary)
-                    }
-                } else {
-                    if let daysLeft = viewModel.daysRemaining {
-                        Text("\(daysLeft)").font(.system(size: 60, weight: .bold)).foregroundColor(.orange)
-                        Text("Days until target hit").font(.headline)
-                        Text(viewModel.logicDescription).font(.caption).foregroundColor(.secondary).padding(.top, 4)
-                    } else {
-                        Divider().padding(.vertical, 5)
-                        Text("Estimate Unavailable").font(.title3).bold()
-                        Text(viewModel.progressWarningMessage).font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center).padding(.horizontal)
-                    }
-                }
-            } else {
-                Text("\(goalType): \(targetDisplay, specifier: "%.1f") \(weightLabel)").font(.subheadline).foregroundColor(.secondary)
-                Text("No Weight Data").font(.title3).bold().foregroundColor(.secondary)
-                Text("Log your weight in the Weight tab").font(.caption).foregroundColor(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 15).fill(Color.orange.opacity(0.1)))
     }
     
     private func checkGoalReached(current: Double) -> Bool {
@@ -280,9 +376,9 @@ struct DashboardView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: "gearshape.fill")
+                    Image(systemName: "chart.line.uptrend.xyaxis")
                         .font(.title3)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                         .padding(8)
                         .background(Color.gray.opacity(0.1))
                         .clipShape(Circle())
