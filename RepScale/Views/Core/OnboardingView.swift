@@ -7,7 +7,7 @@ struct OnboardingView: View {
     // MARK: - Navigation State
     @State private var currentStep = 0
     
-    // MARK: - Local Data Collection (Transferred to UserProfile on completion)
+    // MARK: - Local Data Collection
     @State private var unitSystem: UnitSystem = .metric
     @State private var isDarkMode: Bool = true
     @State private var gender: Gender = .male
@@ -44,7 +44,6 @@ struct OnboardingView: View {
         return unitSystem == .imperial ? value / 2.20462 : value
     }
     
-    // Helper to convert stored Kg to display unit
     func toDisplay(_ kgValue: Double) -> Double {
         return unitSystem == .imperial ? kgValue * 2.20462 : kgValue
     }
@@ -178,7 +177,6 @@ struct OnboardingView: View {
                     HStack {
                         Text("Tolerance (+/- \(unitLabel))")
                         Spacer()
-                        // Binding to convert display value to/from stored kg value
                         TextField("2.0", value: Binding(
                             get: { toDisplay(maintenanceTolerance) },
                             set: { maintenanceTolerance = toKg($0) }
@@ -409,10 +407,9 @@ struct OnboardingView: View {
         
         modelContext.insert(profile)
         
-        // --- ADDED THIS LINE ---
-        // Mark onboarding as complete in Keychain so it survives re-installs
-        KeychainManager.standard.setOnboardingComplete()
-        // -----------------------
+        // --- ADDED: Seed Exercises NOW, since we know this is a new user ---
+        DefaultExercises.seed(context: modelContext)
+        // ------------------------------------------------------------------
         
         // 5. Create First Weight Entry
         let firstEntry = WeightEntry(date: Date(), weight: storedCurrentWeightKg, note: "")

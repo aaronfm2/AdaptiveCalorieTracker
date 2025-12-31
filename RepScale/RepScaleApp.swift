@@ -24,11 +24,7 @@ struct RepScaleApp: App {
         )
 
         do {
-            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            Task { @MainActor in
-                DefaultExercises.seed(context: container.mainContext)
-            }
-            return container
+            return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
@@ -45,31 +41,23 @@ struct RepScaleApp: App {
 
 struct RootView: View {
     @Query var userProfiles: [UserProfile]
-    // Note: 'hasSeenAppTutorial' stays in AppStorage so it resets on re-install if you want,
-    // or you can move it to keychain too if you want that to persist.
     @AppStorage("hasSeenAppTutorial") private var hasSeenAppTutorial: Bool = false
     
     var body: some View {
         Group {
             if let profile = userProfiles.first {
-                // Scenario 1: Data is loaded. Show App.
+                // Scenario 1: Profile Found -> Show Main App
                 MainTabView(profile: profile)
                     .preferredColorScheme(profile.isDarkMode ? .dark : .light)
-                    
-            } else if KeychainManager.standard.isOnboardingComplete() {
-                // Scenario 2: User HAS been here before, but data is syncing. Show Loading.
-                VStack(spacing: 20) {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                    Text("Restoring your profile...")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                }
+                    .transition(.opacity)
                 
             } else {
-                // Scenario 3: Truly new user. Show Onboarding.
+                // Scenario 2: No Profile -> Show Onboarding
+                // (If iCloud is syncing in background, this will swap to MainTabView automatically when data arrives)
                 OnboardingView()
+                    .transition(.opacity)
             }
         }
+        .animation(.default, value: userProfiles.isEmpty)
     }
 }

@@ -57,42 +57,17 @@ struct DefaultExercises {
         ExerciseDefinition(name: "Swimming", muscleGroups: ["Cardio"], isCardio: true)
     ]
     
-    /// Checks if defaults have been added using Keychain persistence.
+    /// Adds default exercises to the context.
+    /// Call this ONLY when creating a new user profile.
     @MainActor
     static func seed(context: ModelContext) {
-        // 1. Check Keychain via Manager. This survives app deletion/reinstall.
-        // If true, it means we have seeded before, so we do NOTHING and let CloudKit sync.
-        if KeychainManager.standard.hasSeededDefaultExercises() {
-            print("Keychain says we have seeded before. Skipping to avoid duplicates.")
-            return
-        }
-        
-        // 2. Fallback Check: Database
-        // If the keychain is empty (weird edge case) but DB has data, mark keychain and skip.
-        let descriptor = FetchDescriptor<ExerciseDefinition>()
-        let count = (try? context.fetchCount(descriptor)) ?? 0
-        
-        if count > 0 {
-            print("Database has exercises. Marking Keychain and skipping.")
-            KeychainManager.standard.setSeededDefaultExercises()
-            return
-        }
-        
-        // 3. Only seed if BOTH Keychain and DB are empty (New User)
         print("Seeding default exercises...")
         
         for exercise in all {
             context.insert(exercise)
         }
         
-        // Save context and update Keychain
-        do {
-            try context.save()
-            KeychainManager.standard.setSeededDefaultExercises()
-            // Legacy flag update just in case
-            UserDefaults.standard.set(true, forKey: "hasSeededDefaultExercises")
-        } catch {
-            print("Failed to seed exercises: \(error)")
-        }
+        // Save immediately
+        try? context.save()
     }
 }
