@@ -23,6 +23,11 @@ struct WeightEntryDetailView: View {
     let tags = ["Full Body", "Upper Body", "Arms", "Chest", "Back", "Shoulders", "Legs"]
     var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
 
+    // --- Added: Background Color Logic ---
+    var appBackgroundColor: Color {
+        profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
+    }
+
     var body: some View {
         Form {
             Section("Details") {
@@ -78,6 +83,10 @@ struct WeightEntryDetailView: View {
                 }
             }
         }
+        // --- Added: Apply Background Color ---
+        .scrollContentBackground(.hidden)
+        .background(appBackgroundColor)
+        // ------------------------------------
         .navigationTitle("Edit Log")
         
         // --- 1. Selection Dialog ---
