@@ -223,7 +223,7 @@ struct RecoveryCard: View {
     }
 }
 
-// Subview: Simple Calendar Grid
+// Subview: Enhanced Calendar Grid
 struct WorkoutCalendarView: View {
     let workouts: [Workout]
     let profile: UserProfile
@@ -238,68 +238,89 @@ struct WorkoutCalendarView: View {
     }
     
     var body: some View {
-        VStack {
+        VStack(spacing: 16) {
             // Month Header
             HStack {
                 Button(action: { changeMonth(by: -1) }) {
-                    Image(systemName: "chevron.left")
+                    Image(systemName: "chevron.left.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
 
                 Spacer()
                 Text(currentMonth, format: .dateTime.month(.wide).year())
                     .font(.headline)
+                    .fontWeight(.semibold)
                 Spacer()
                 
                 Button(action: { changeMonth(by: 1) }) {
-                    Image(systemName: "chevron.right")
+                    Image(systemName: "chevron.right.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
             }
-            .padding(.bottom, 10)
             
             // Days Header
             HStack {
-                ForEach(days, id: \.self) { day in
-                    Text(day).font(.caption).bold().frame(maxWidth: .infinity)
+                ForEach(0..<7, id: \.self) { index in
+                    Text(days[index])
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity)
                 }
             }
             
             // Grid
             let daysInMonth = calendarDays()
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 10) {
-                ForEach(daysInMonth, id: \.self) { date in
-                    if let date = date {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+                // Use indices to avoid ID collisions with nil or duplicate dates
+                ForEach(daysInMonth.indices, id: \.self) { index in
+                    if let date = daysInMonth[index] {
                         let dailyWorkouts = workouts.filter({ Calendar.current.isDate($0.date, inSameDayAs: date) })
                         let hasWorkout = !dailyWorkouts.isEmpty
+                        let isToday = Calendar.current.isDateInToday(date)
                         
-                        VStack(spacing: 2) {
-                            Text("\(Calendar.current.component(.day, from: date))")
-                                .font(.caption2)
-                            
-                            if hasWorkout {
-                                HStack(spacing: 2) {
-                                    ForEach(dailyWorkouts.prefix(dailyWorkouts.count > 1 ? 2 : 1)) { w in
-                                        Circle()
-                                            .fill(categoryColor(w.category))
-                                            .frame(width: 6, height: 6)
-                                    }
-                                }
-                            } else {
-                                Circle().fill(Color.clear).frame(width: 6, height: 6)
-                            }
-                        }
-                        .frame(height: 40)
-                        .frame(maxWidth: .infinity)
-                        .background(Calendar.current.isDateInToday(date) ? Color.blue.opacity(0.1) : Color.clear)
-                        .cornerRadius(8)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
+                        Button {
                             if hasWorkout {
                                 selectedWorkouts = dailyWorkouts
                                 isNavigating = true
                             }
+                        } label: {
+                            VStack(spacing: 4) {
+                                Text("\(Calendar.current.component(.day, from: date))")
+                                    .font(.system(size: 14, weight: isToday ? .bold : .regular))
+                                    .foregroundColor(isToday ? .white : .primary)
+                                    .frame(width: 28, height: 28)
+                                    .background(isToday ? Circle().fill(Color.blue) : Circle().fill(Color.clear))
+                                
+                                // Indicators
+                                HStack(spacing: 3) {
+                                    if hasWorkout {
+                                        // Show up to 3 dots for multiple workouts
+                                        ForEach(dailyWorkouts.prefix(3)) { w in
+                                            Circle()
+                                                .fill(categoryColor(w.category))
+                                                .frame(width: 4, height: 4)
+                                        }
+                                    } else {
+                                        // Placeholder to keep height consistent
+                                        Circle().fill(Color.clear).frame(width: 4, height: 4)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                            .background(
+                                // Subtle highlight for workout days that aren't today
+                                hasWorkout && !isToday ? Color.blue.opacity(0.05) : Color.clear
+                            )
+                            .cornerRadius(8)
                         }
+                        .buttonStyle(.plain)
+                        .disabled(!hasWorkout) // Only clickable if there is data
 
                     } else {
                         Text("").frame(height: 40)
@@ -307,8 +328,9 @@ struct WorkoutCalendarView: View {
                 }
             }
         }
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(cardBackgroundColor))
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16).fill(cardBackgroundColor))
+        // Navigation Handling
         .background(
             NavigationLink(
                 destination: destinationView,
