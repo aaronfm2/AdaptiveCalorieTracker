@@ -191,6 +191,38 @@ struct WorkoutTabView: View {
             .sheet(isPresented: $showingLibrary) {
                 ExerciseLibraryView(profile: profile)
             }
+            // Auto-clean duplicates when this view appears
+            .onAppear {
+                removeDuplicateExercises()
+            }
+        }
+    }
+    
+    // MARK: - Duplicate Cleanup Logic
+    private func removeDuplicateExercises() {
+        do {
+            let descriptor = FetchDescriptor<ExerciseDefinition>()
+            let exercises = try modelContext.fetch(descriptor)
+            
+            // Group by name
+            let grouped = Dictionary(grouping: exercises, by: { $0.name })
+            
+            for (_, duplicates) in grouped where duplicates.count > 1 {
+                // Keep the one with the most information (prioritize muscle groups, then cardio flag)
+                let sorted = duplicates.sorted { first, second in
+                    if !first.muscleGroups.isEmpty && second.muscleGroups.isEmpty { return true }
+                    if first.muscleGroups.isEmpty && !second.muscleGroups.isEmpty { return false }
+                    if first.isCardio && !second.isCardio { return true }
+                    return false
+                }
+                
+                // Delete all except the first one (which is the "best" one based on sort)
+                for exercise in sorted.dropFirst() {
+                    modelContext.delete(exercise)
+                }
+            }
+        } catch {
+            print("Error cleaning up duplicate exercises: \(error)")
         }
     }
     
