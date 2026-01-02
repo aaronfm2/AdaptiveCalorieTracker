@@ -136,32 +136,21 @@ struct OnboardingView: View {
                     .padding(.bottom, 20)
                 }
             }
-            
-            // --- CLOSE KEYBOARD BUTTON OVERLAY ---
-            if isInputFocused {
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button("Done") {
-                            hideKeyboard()
-                        }
-                        .font(.headline)
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 16)
-                        .background(Material.thinMaterial)
-                        .clipShape(Capsule())
-                        .padding()
-                        .shadow(radius: 5)
-                    }
-                    Spacer()
-                }
-                .transition(.opacity)
-                .zIndex(100)
-            }
         }
         .preferredColorScheme(isDarkMode ? .dark : .light)
-        .onTapGesture { hideKeyboard() }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
+        // FIXED: Removed .onTapGesture { hideKeyboard() } so DatePicker works
+        .ignoresSafeArea(.keyboard, edges: .bottom) // Keeps the ghost keyboard fix
+        // ADDED: Moves "Done" button to the keyboard toolbar
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    hideKeyboard()
+                }
+                .fontWeight(.bold)
+                .foregroundColor(.blue)
+            }
+        }
     }
     
     // MARK: - Validation
