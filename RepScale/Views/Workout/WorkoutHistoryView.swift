@@ -7,7 +7,6 @@ struct WorkoutHistoryView: View {
     
     enum FilterType: String, CaseIterable {
         case category = "Category"
-        case muscle = "Muscle"
         case exercise = "Exercise"
     }
     
@@ -15,8 +14,8 @@ struct WorkoutHistoryView: View {
     
     // Defaults
     @State private var selectedCategory: String = "All"
-    @State private var selectedMuscle: String = "All"
     @State private var selectedExercise: String = "All"
+    @State private var selectedReps: Int? = nil // Rep Filter
     
     var appBackgroundColor: Color {
         profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
@@ -36,13 +35,30 @@ struct WorkoutHistoryView: View {
         case .category:
             if selectedCategory == "All" { return workouts }
             return workouts.filter { $0.category == selectedCategory }
-        case .muscle:
-            if selectedMuscle == "All" { return workouts }
-            return workouts.filter { $0.muscleGroups.contains(selectedMuscle) }
+            
         case .exercise:
             if selectedExercise == "All" { return workouts }
-            // For granular exercise view, we still filter workouts that contain the exercise
-            return workouts.filter { w in w.exercises?.contains(where: { $0.name == selectedExercise }) ?? false }
+            
+            // Filter workouts that contain the selected exercise AND match the rep filter
+            return workouts.filter { w in
+                w.exercises?.contains(where: { entry in
+                    let nameMatch = entry.name == selectedExercise
+                    let repMatch = checkRepMatch(reps: entry.reps)
+                    return nameMatch && repMatch
+                }) ?? false
+            }
+        }
+    }
+    
+    // Helper to check if reps match the filter
+    func checkRepMatch(reps: Int?) -> Bool {
+        guard let filter = selectedReps else { return true } // No filter selected
+        let entryReps = reps ?? 0
+        
+        if filter == 20 {
+            return entryReps >= 20
+        } else {
+            return entryReps == filter
         }
     }
     
@@ -58,6 +74,7 @@ struct WorkoutHistoryView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
                 
+                // Primary Filter Row (Categories, Exercise Names)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         switch filterType {
@@ -68,13 +85,7 @@ struct WorkoutHistoryView: View {
                                     selectedCategory = cat.rawValue
                                 }
                             }
-                        case .muscle:
-                            FilterChip(title: "All", isSelected: selectedMuscle == "All") { selectedMuscle = "All" }
-                            ForEach(MuscleGroup.allCases, id: \.self) { muscle in
-                                FilterChip(title: muscle.rawValue, isSelected: selectedMuscle == muscle.rawValue) {
-                                    selectedMuscle = muscle.rawValue
-                                }
-                            }
+                            
                         case .exercise:
                             if uniqueExercises.isEmpty {
                                 Text("No exercises logged yet").font(.caption).foregroundColor(.secondary)
@@ -88,6 +99,24 @@ struct WorkoutHistoryView: View {
                         }
                     }
                     .padding(.horizontal)
+                }
+                
+                // Secondary Filter Row (Reps) - Only visible for Exercises
+                if filterType == .exercise && selectedExercise != "All" {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            FilterChip(title: "All Reps", isSelected: selectedReps == nil) { selectedReps = nil }
+                            
+                            ForEach(1...20, id: \.self) { i in
+                                let title = i == 20 ? "20+" : "\(i)"
+                                FilterChip(title: title, isSelected: selectedReps == i) {
+                                    selectedReps = i
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                    .transition(.opacity) // Smooth fade in
                 }
             }
             .padding(.vertical, 12)
@@ -126,20 +155,20 @@ struct WorkoutHistoryView: View {
                                     Text(workout.category).font(.caption).foregroundColor(.blue)
                                 }
                             ) {
-                                let relevantEntries = (workout.exercises ?? []).filter { $0.name == selectedExercise }
+                                // Filter specific entries inside the workout to match the selected reps
+                                let relevantEntries = (workout.exercises ?? []).filter { entry in
+                                    entry.name == selectedExercise && checkRepMatch(reps: entry.reps)
+                                }
+                                
                                 ForEach(relevantEntries) { entry in
                                     ExerciseHistoryRow(entry: entry, profile: profile)
                                 }
                             }
                         }
                     } else {
-                        // Standard Workout Summary View
                         ForEach(filteredWorkouts) { workout in
                             NavigationLink(destination: destinationFor(workout)) {
-                                WorkoutHistoryRow(
-                                    workout: workout,
-                                    showExercises: filterType == .muscle
-                                )
+                                WorkoutHistoryRow(workout: workout)
                             }
                         }
                     }
@@ -155,11 +184,7 @@ struct WorkoutHistoryView: View {
     
     @ViewBuilder
     func destinationFor(_ workout: Workout) -> some View {
-        if filterType == .muscle && selectedMuscle != "All" {
-            WorkoutDetailView(workout: workout, profile: profile, filterMuscle: selectedMuscle)
-        } else {
-            WorkoutDetailView(workout: workout, profile: profile)
-        }
+        WorkoutDetailView(workout: workout, profile: profile)
     }
 }
 
@@ -230,18 +255,19 @@ struct ExerciseHistoryRow: View {
 
 struct WorkoutHistoryRow: View {
     let workout: Workout
-    var showExercises: Bool = false
     
     var body: some View {
         let exercises = workout.exercises ?? []
-        // Calculate unique names maintaining order of appearance
+        
+        // Count unique exercises in the workout
         let uniqueNames = exercises.map { $0.name }.reduce(into: [String]()) { (result, name) in
             if !result.contains(name) { result.append(name) }
         }
+        
         let uniqueCount = uniqueNames.count
         let totalSets = exercises.count
         
-        HStack {
+        return HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(workout.date, format: .dateTime.day().month().year())
                     .font(.body).bold()
@@ -249,25 +275,14 @@ struct WorkoutHistoryRow: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
-                Text(
-                    "\(uniqueCount) \(uniqueCount == 1 ? "exercise" : "exercises"), " +
-                    "\(totalSets) \(totalSets == 1 ? "set" : "sets")"
-                )
-                .font(.caption)
-                .foregroundColor(.secondary)
+                Text("\(uniqueCount) exercises, \(totalSets) sets")
+                    .font(.caption).foregroundColor(.secondary)
+                
                 if !exercises.isEmpty {
-                    if showExercises {
-                        // UPDATED: Shows unique list of names (e.g. "Bench Press" only once)
-                        Text(uniqueNames.joined(separator: ", "))
-                            .font(.caption2).foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    } else {
-                        // Shows Muscle Groups
-                        Text(workout.muscleGroups.joined(separator: ", "))
-                            .font(.caption2).foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
+                    // Show Muscle Groups for the standard view
+                    Text(workout.muscleGroups.joined(separator: ", "))
+                        .font(.caption2).foregroundColor(.secondary)
+                        .lineLimit(1)
                 } else {
                     Text("No exercises")
                         .font(.caption2).foregroundColor(.secondary)
