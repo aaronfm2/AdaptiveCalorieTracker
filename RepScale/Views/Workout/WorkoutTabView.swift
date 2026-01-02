@@ -39,7 +39,7 @@ struct WorkoutTabView: View {
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
                 
-                // 2. Recovery Counters
+                // 2. Recovery Tracker & History
                 Section(header: Text("Recovery Tracker")) {
                     if trackedMusclesList.isEmpty {
                         Text("Select muscles to track recovery time.")
@@ -59,6 +59,25 @@ struct WorkoutTabView: View {
                             HStack {
                                 Image(systemName: "slider.horizontal.3")
                                 Text("Select Tracked Muscles")
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption)
+                            }
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .padding()
+                            .background(cardBackgroundColor)
+                            .cornerRadius(12)
+                        }
+                        .padding(.top, 8)
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
+                        
+                        // NEW: Workout History Button
+                        NavigationLink(destination: WorkoutHistoryView(profile: profile)) {
+                            HStack {
+                                Image(systemName: "clock.arrow.circlepath")
+                                Text("Workout History")
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.caption)
                             }

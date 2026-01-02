@@ -1,10 +1,15 @@
 import SwiftUI
+import SwiftData
 
 struct WorkoutDetailView: View {
     let workout: Workout
     var profile: UserProfile // Injected
     
+    // Optional filter: If set, only exercises targeting this muscle will be shown
+    var filterMuscle: String? = nil
+    
     @State private var isEditing = false
+    @Query private var exerciseDefs: [ExerciseDefinition]
 
     var appBackgroundColor: Color {
         profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
@@ -20,7 +25,21 @@ struct WorkoutDetailView: View {
     // Helper to group exercises by name while keeping order
     var groupedExercises: [(name: String, sets: [ExerciseEntry])] {
         var groups: [(name: String, sets: [ExerciseEntry])] = []
-        for exercise in (workout.exercises ?? []) {
+        
+        // Filter exercises first if a muscle filter is active
+        let relevantExercises = (workout.exercises ?? []).filter { entry in
+            guard let targetMuscle = filterMuscle else { return true }
+            
+            // Find definition for this exercise to check muscle groups
+            if let def = exerciseDefs.first(where: { $0.name == entry.name }) {
+                return def.muscleGroups.contains(targetMuscle)
+            }
+            // If definition not found (custom exercise?), defaulting to show or hide?
+            // Hiding is safer for "Show Back exercises"
+            return false
+        }
+        
+        for exercise in relevantExercises {
             if let last = groups.last, last.name == exercise.name {
                 groups[groups.count - 1].sets.append(exercise)
             } else {
@@ -50,15 +69,23 @@ struct WorkoutDetailView: View {
                 HStack {
                     Text("Muscles")
                     Spacer()
-                    Text(workout.muscleGroups.joined(separator: ", "))
-                        .foregroundColor(.secondary)
+                    if let filter = filterMuscle {
+                        // Highlight the filtered muscle
+                        Text(filter)
+                            .fontWeight(.bold)
+                            .foregroundColor(.blue)
+                    } else {
+                        Text(workout.muscleGroups.joined(separator: ", "))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
             .listRowBackground(cardBackgroundColor)
             
-            Section("Exercises") {
-                if (workout.exercises ?? []).isEmpty {
-                    Text("No exercises logged").italic().foregroundColor(.secondary)
+            Section("Exercises\(filterMuscle != nil ? " (\(filterMuscle!))" : "")") {
+                if groupedExercises.isEmpty {
+                    Text("No \(filterMuscle ?? "") exercises found in this workout.")
+                        .italic().foregroundColor(.secondary)
                 } else {
                     ForEach(groupedExercises, id: \.name) { group in
                         VStack(alignment: .leading, spacing: 8) {
