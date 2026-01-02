@@ -12,6 +12,9 @@ struct WorkoutTabView: View {
     @State private var showingLibrary = false
     @State private var workoutToEdit: Workout? = nil
     
+    // New state to control navigation programmatically for a cleaner UI
+    @State private var isNavigatingHistory = false
+    
     var appBackgroundColor: Color {
         profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
     }
@@ -64,25 +67,50 @@ struct WorkoutTabView: View {
                         .padding(.vertical, 5)
                         .listRowBackground(Color.clear)
                         
-                        NavigationLink(destination: WorkoutHistoryView(profile: profile)) {
-                            HStack {
-                                Image(systemName: "clock.arrow.circlepath")
-                                    .foregroundColor(.blue)
-                                Text("Workout History")
-                                    .fontWeight(.medium)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(Color(uiColor: .tertiaryLabel))
+                        // --- IMPROVED BUTTON UI START ---
+                        // We use a ZStack to hide the default NavigationLink chevron and render our own custom card.
+                        ZStack {
+                            NavigationLink(destination: WorkoutHistoryView(profile: profile), isActive: $isNavigatingHistory) {
+                                EmptyView()
                             }
-                            .padding()
-                            .background(cardBackgroundColor)
-                            .cornerRadius(12)
+                            .opacity(0) // Completely hides the default row style
+                            
+                            Button(action: { isNavigatingHistory = true }) {
+                                HStack(spacing: 12) {
+                                    // Icon with background
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color.blue.opacity(0.1))
+                                            .frame(width: 36, height: 36)
+                                        Image(systemName: "clock.arrow.circlepath")
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(.blue)
+                                    }
+                                    
+                                    Text("View Workout History")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                    
+                                    Spacer()
+                                    
+                                    // Custom chevron inside the card
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(Color(uiColor: .tertiaryLabel))
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .background(cardBackgroundColor)
+                                .cornerRadius(12)
+                                .shadow(color: Color.black.opacity(0.03), radius: 2, x: 0, y: 1)
+                            }
+                            .buttonStyle(.plain) // Preserves the card tap animation
                         }
-                        .padding(.top, 8)
-                        .buttonStyle(.plain)
+                        .padding(.top, 4)
                         .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets())
+                        .listRowInsets(EdgeInsets()) // Allows card to span correctly
+                        // --- IMPROVED BUTTON UI END ---
                     }
                 }
                 

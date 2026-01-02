@@ -11,6 +11,7 @@ struct WorkoutHistoryView: View {
     }
     
     @State private var filterType: FilterType = .category
+    @Namespace private var animation
     
     // Defaults
     @State private var selectedCategory: String = "All"
@@ -65,13 +66,34 @@ struct WorkoutHistoryView: View {
     var body: some View {
         VStack(spacing: 0) {
             // MARK: - Filter Controls
-            VStack(spacing: 12) {
-                Picker("Filter", selection: $filterType) {
+            VStack(spacing: 16) {
+                // Custom Segmented Control
+                HStack(spacing: 0) {
                     ForEach(FilterType.allCases, id: \.self) { type in
-                        Text(type.rawValue).tag(type)
+                        Button(action: {
+                            withAnimation(.snappy) {
+                                filterType = type
+                            }
+                        }) {
+                            Text(type.rawValue)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(filterType == type ? .white : .primary)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity)
+                                .background {
+                                    if filterType == type {
+                                        Capsule()
+                                            .fill(Color.blue)
+                                            .matchedGeometryEffect(id: "activeTab", in: animation)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
+                .padding(4)
+                .background(Color(uiColor: .systemGray6)) // Subtle track background
+                .clipShape(Capsule())
                 .padding(.horizontal)
                 
                 // Primary Filter Row (Categories, Exercise Names)
@@ -119,7 +141,7 @@ struct WorkoutHistoryView: View {
                     .transition(.opacity) // Smooth fade in
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 16)
             .background(cardBackgroundColor)
             
             // MARK: - Results List
