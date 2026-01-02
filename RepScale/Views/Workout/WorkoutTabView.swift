@@ -2,7 +2,6 @@ import SwiftUI
 import SwiftData
 
 struct WorkoutTabView: View {
-    // --- CLOUD SYNC: Injected Profile ---
     @Bindable var profile: UserProfile
     
     @Environment(\.modelContext) private var modelContext
@@ -12,8 +11,6 @@ struct WorkoutTabView: View {
     @State private var showingSettings = false
     @State private var showingLibrary = false
     @State private var workoutToEdit: Workout? = nil
-    
-    // MARK: - Computed Properties
     
     var appBackgroundColor: Color {
         profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
@@ -67,7 +64,6 @@ struct WorkoutTabView: View {
                         .padding(.vertical, 5)
                         .listRowBackground(Color.clear)
                         
-                        // Workout History Button
                         NavigationLink(destination: WorkoutHistoryView(profile: profile)) {
                             HStack {
                                 Image(systemName: "clock.arrow.circlepath")
@@ -162,11 +158,10 @@ struct WorkoutTabView: View {
                 AddWorkoutView(workoutToEdit: workoutToEdit, profile: profile)
             }
             .sheet(isPresented: $showingSettings) {
-                // Pass the profile binding for muscles
-                MuscleSelectionView(selectedMusclesString: $profile.trackedMuscles)
+                MuscleSelectionView(profile: profile)
             }
             .sheet(isPresented: $showingLibrary) {
-                ExerciseLibraryView()
+                ExerciseLibraryView(profile: profile)
             }
         }
     }
@@ -238,7 +233,6 @@ struct RecoveryCard: View {
     }
 }
 
-// Subview: Enhanced Calendar Grid
 struct WorkoutCalendarView: View {
     let workouts: [Workout]
     let profile: UserProfile
@@ -254,7 +248,6 @@ struct WorkoutCalendarView: View {
     
     var body: some View {
         VStack(spacing: 16) {
-            // Month Header
             HStack {
                 Button(action: { changeMonth(by: -1) }) {
                     Image(systemName: "chevron.left.circle.fill")
@@ -277,7 +270,6 @@ struct WorkoutCalendarView: View {
                 .buttonStyle(.plain)
             }
             
-            // Days Header
             HStack {
                 ForEach(0..<7, id: \.self) { index in
                     Text(days[index])
@@ -288,7 +280,6 @@ struct WorkoutCalendarView: View {
                 }
             }
             
-            // Grid
             let daysInMonth = calendarDays()
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
                 ForEach(daysInMonth.indices, id: \.self) { index in
@@ -391,7 +382,6 @@ struct WorkoutCalendarView: View {
     }
 }
 
-// List for days with multiple workouts
 struct DailyWorkoutListView: View {
     let workouts: [Workout]
     let profile: UserProfile
@@ -415,72 +405,72 @@ struct DailyWorkoutListView: View {
     }
 }
 
-// UPDATED: MuscleSelectionView with Add Custom Muscle logic
 struct MuscleSelectionView: View {
-    @Binding var selectedMusclesString: String
+    @Bindable var profile: UserProfile
     @Environment(\.dismiss) var dismiss
     
-    // State for adding new muscles
     @State private var newMuscleName: String = ""
     
-    // Derived lists
-    var currentList: [String] {
-        selectedMusclesString.components(separatedBy: ",").filter { !$0.isEmpty }
+    var activeMuscles: Set<String> {
+        Set(profile.trackedMuscles.components(separatedBy: ",").filter { !$0.isEmpty })
     }
     
-    var customMuscles: [String] {
+    // FIX: Include tracked muscles that aren't yet in customMuscles (auto-migration)
+    var customMusclesList: [String] {
+        let savedCustom = profile.customMuscles.components(separatedBy: ",")
+        let active = profile.trackedMuscles.components(separatedBy: ",")
         let standard = Set(MuscleGroup.allCases.map { $0.rawValue })
-        return currentList.filter { !standard.contains($0) }
+        
+        let combined = Set(savedCustom + active).subtracting(standard)
+        return Array(combined).filter { !$0.isEmpty }.sorted()
     }
     
     var body: some View {
         NavigationStack {
             List {
-                // Section 1: Add New Muscle
                 Section("Add Custom Muscle") {
                     HStack {
                         TextField("Muscle Name (e.g. Forearms)", text: $newMuscleName)
                             .textInputAutocapitalization(.words)
                         Button(action: addMuscle) {
-                            Text("Add")
-                                .fontWeight(.bold)
+                            Text("Add").fontWeight(.bold)
                         }
                         .disabled(newMuscleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
                 
-                // Section 2: Standard Muscles (Enum)
                 Section("Standard Muscles") {
                     ForEach(MuscleGroup.allCases, id: \.self) { muscle in
                         HStack {
                             Text(muscle.rawValue)
                             Spacer()
-                            if selectedMusclesString.contains(muscle.rawValue) {
+                            if activeMuscles.contains(muscle.rawValue) {
                                 Image(systemName: "checkmark").foregroundColor(.blue)
                             }
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            toggleMuscle(muscle.rawValue)
+                            toggleTracking(muscle.rawValue)
                         }
                     }
                 }
                 
-                // Section 3: Custom Muscles (User added)
-                if !customMuscles.isEmpty {
+                if !customMusclesList.isEmpty {
                     Section("Custom Muscles") {
-                        ForEach(customMuscles, id: \.self) { muscle in
+                        ForEach(customMusclesList, id: \.self) { muscle in
                             HStack {
                                 Text(muscle)
                                 Spacer()
-                                Image(systemName: "checkmark").foregroundColor(.blue)
+                                if activeMuscles.contains(muscle) {
+                                    Image(systemName: "checkmark").foregroundColor(.blue)
+                                }
                             }
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                // Toggling a custom muscle removes it (delete behavior)
-                                toggleMuscle(muscle)
+                                toggleTracking(muscle)
                             }
                         }
+                        .onDelete(perform: deleteCustomMuscle)
                     }
                 }
             }
@@ -491,28 +481,59 @@ struct MuscleSelectionView: View {
         }
     }
     
-    
     func addMuscle() {
         let trimmed = newMuscleName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         
-        // Prevent duplicates
-        let current = selectedMusclesString.components(separatedBy: ",").filter { !$0.isEmpty }
-        if !current.contains(trimmed) {
-            var new = current
-            new.append(trimmed)
-            selectedMusclesString = new.joined(separator: ",")
-            newMuscleName = "" // Reset field
+        // Save to custom muscles list
+        var custom = profile.customMuscles.components(separatedBy: ",").filter { !$0.isEmpty }
+        if !custom.contains(trimmed) && MuscleGroup(rawValue: trimmed) == nil {
+            custom.append(trimmed)
+            profile.customMuscles = custom.joined(separator: ",")
+            
+            // Auto-track it
+            toggleTracking(trimmed, forceOn: true)
+            newMuscleName = ""
         }
     }
     
-    func toggleMuscle(_ muscle: String) {
-        var current = selectedMusclesString.components(separatedBy: ",").filter { !$0.isEmpty }
-        if current.contains(muscle) {
-            current.removeAll { $0 == muscle }
-        } else {
-            current.append(muscle)
+    func toggleTracking(_ muscle: String, forceOn: Bool = false) {
+        var active = profile.trackedMuscles.components(separatedBy: ",").filter { !$0.isEmpty }
+        
+        // FIX: Before untracking, ensure it's saved in custom list so it doesn't disappear
+        if MuscleGroup(rawValue: muscle) == nil {
+            var custom = profile.customMuscles.components(separatedBy: ",").filter { !$0.isEmpty }
+            if !custom.contains(muscle) {
+                custom.append(muscle)
+                profile.customMuscles = custom.joined(separator: ",")
+            }
         }
-        selectedMusclesString = current.joined(separator: ",")
+        
+        if forceOn {
+            if !active.contains(muscle) { active.append(muscle) }
+        } else {
+            if active.contains(muscle) {
+                active.removeAll { $0 == muscle }
+            } else {
+                active.append(muscle)
+            }
+        }
+        
+        profile.trackedMuscles = active.joined(separator: ",")
+    }
+    
+    func deleteCustomMuscle(at offsets: IndexSet) {
+        var custom = customMusclesList
+        let removedItems = offsets.map { custom[$0] }
+        
+        // Remove from definitions
+        var definitions = profile.customMuscles.components(separatedBy: ",").filter { !$0.isEmpty }
+        definitions.removeAll { removedItems.contains($0) }
+        profile.customMuscles = definitions.joined(separator: ",")
+        
+        // Remove from active tracking
+        var active = profile.trackedMuscles.components(separatedBy: ",").filter { !$0.isEmpty }
+        active.removeAll { removedItems.contains($0) }
+        profile.trackedMuscles = active.joined(separator: ",")
     }
 }

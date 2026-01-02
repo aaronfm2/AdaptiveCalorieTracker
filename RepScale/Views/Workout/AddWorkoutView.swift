@@ -6,16 +6,11 @@ struct AddWorkoutView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
-    // Fetch templates for the "Load Template" sheet
     @Query(sort: \WorkoutTemplate.name) private var templates: [WorkoutTemplate]
     
-    // --- CLOUD SYNC: Injected Profile ---
     var profile: UserProfile
-    
-    // The workout we are editing (if any)
     let workoutToEdit: Workout?
     
-    // The ViewModel responsible for this View's state
     @State private var viewModel: AddWorkoutViewModel
     
     init(workoutToEdit: Workout?, profile: UserProfile) {
@@ -30,16 +25,11 @@ struct AddWorkoutView: View {
                 sessionSection
                 exercisesSection
                 addExerciseSection
-                
-                // Rest Timer Section
                 RestTimerSection()
-                
                 notesSection
             }
-            // --- FIX START: Prevents "Blank Screen" Glitch ---
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .scrollDismissesKeyboard(.interactively)
-            // --- FIX END ---
             .navigationTitle(workoutToEdit == nil ? "Log Workout" : "Edit Workout")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -48,7 +38,6 @@ struct AddWorkoutView: View {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
-                        // Templates Menu
                         Menu {
                             Button {
                                 viewModel.showLoadTemplateSheet = true
@@ -67,7 +56,6 @@ struct AddWorkoutView: View {
                             Image(systemName: "doc.text")
                         }
 
-                        // Save Button
                         Button("Save") {
                             viewModel.saveWorkout(context: modelContext, originalWorkout: workoutToEdit) {
                                 dismiss()
@@ -78,17 +66,15 @@ struct AddWorkoutView: View {
                     }
                 }
                 ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Done") {
-                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        }
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
+                }
             }
-            // Sheets & Alerts
             .sheet(isPresented: $viewModel.showAddExerciseSheet) {
-                // Pass selected muscles to the sheet for filtering
                 let muscleStrings = Set(viewModel.selectedMuscles)
-                AddExerciseSheet(exercises: $viewModel.exercises, workoutMuscles: muscleStrings)
+                AddExerciseSheet(exercises: $viewModel.exercises, workoutMuscles: muscleStrings, profile: profile)
             }
             .sheet(isPresented: $viewModel.showLoadTemplateSheet) {
                 LoadTemplateSheet(templates: templates) { selectedTemplate in
@@ -106,10 +92,8 @@ struct AddWorkoutView: View {
     }
 }
 
-// MARK: - Sub-View Extensions
 extension AddWorkoutView {
     
-    // 1. Session Details Section
     private var sessionSection: some View {
         Section("Session Details") {
             DatePicker("Date", selection: $viewModel.date, displayedComponents: .date)
@@ -120,9 +104,8 @@ extension AddWorkoutView {
                 }
             }
             
-            // IMPROVEMENT: Navigates to a separate screen to avoid confusion
             NavigationLink {
-                MuscleSelectionList(selectedMuscles: $viewModel.selectedMuscles)
+                MuscleSelectionList(selectedMuscles: $viewModel.selectedMuscles, profile: profile)
             } label: {
                 HStack {
                     Text("Target Muscles")
@@ -131,7 +114,6 @@ extension AddWorkoutView {
                         Text("None")
                             .foregroundColor(.secondary)
                     } else {
-                        // Display a clean, truncated list of selected muscles
                         Text(viewModel.selectedMuscles.sorted().joined(separator: ", "))
                             .font(.subheadline)
                             .foregroundColor(.secondary)
@@ -143,53 +125,52 @@ extension AddWorkoutView {
         }
     }
     
-    // 2. Exercises List Section
-    @ViewBuilder
     private var exercisesSection: some View {
-        if viewModel.exercises.isEmpty {
-            Section {
-                Text("No exercises added yet.")
-                    .foregroundColor(.secondary)
-                    .italic()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            }
-        } else {
-            ForEach(viewModel.groupedExercises, id: \.name) { group in
+        Group {
+            if viewModel.exercises.isEmpty {
                 Section {
-                    ForEach(Array(group.exercises.enumerated()), id: \.element) { index, ex in
-                        EditExerciseRow(exercise: ex, index: index, unitSystem: profile.unitSystem)
-                            .swipeActions(edge: .leading) {
-                                Button {
-                                    viewModel.duplicateExercise(ex)
-                                } label: {
-                                    Label("Copy", systemImage: "plus.square.on.square")
+                    Text("No exercises added yet.")
+                        .foregroundColor(.secondary)
+                        .italic()
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding()
+                }
+            } else {
+                ForEach(viewModel.groupedExercises, id: \.name) { group in
+                    Section {
+                        ForEach(Array(group.exercises.enumerated()), id: \.element) { index, ex in
+                            EditExerciseRow(exercise: ex, index: index, unitSystem: profile.unitSystem)
+                                .swipeActions(edge: .leading) {
+                                    Button {
+                                        viewModel.duplicateExercise(ex)
+                                    } label: {
+                                        Label("Copy", systemImage: "plus.square.on.square")
+                                    }
+                                    .tint(.blue)
                                 }
-                                .tint(.blue)
-                            }
-                    }
-                    .onDelete { indexSet in
-                        viewModel.deleteFromGroup(group: group, at: indexSet)
-                    }
-                    
-                    Button(action: { viewModel.addSet(to: group.name) }) {
-                        Label("Add Set", systemImage: "plus")
-                            .font(.subheadline)
-                    }
-                    
-                } header: {
-                    HStack {
-                        Text(group.name).font(.headline).foregroundColor(.primary)
-                        Spacer()
-                        Text("\(group.exercises.count) sets")
-                            .font(.caption).foregroundColor(.secondary).textCase(nil)
+                        }
+                        .onDelete { indexSet in
+                            viewModel.deleteFromGroup(group: group, at: indexSet)
+                        }
+                        
+                        Button(action: { viewModel.addSet(to: group.name) }) {
+                            Label("Add Set", systemImage: "plus")
+                                .font(.subheadline)
+                        }
+                        
+                    } header: {
+                        HStack {
+                            Text(group.name).font(.headline).foregroundColor(.primary)
+                            Spacer()
+                            Text("\(group.exercises.count) sets")
+                                .font(.caption).foregroundColor(.secondary).textCase(nil)
+                        }
                     }
                 }
             }
         }
     }
     
-    // 3. Add Exercise Button Section
     private var addExerciseSection: some View {
         Section {
             Button(action: { viewModel.showAddExerciseSheet = true }) {
@@ -200,7 +181,6 @@ extension AddWorkoutView {
         }
     }
     
-    // 4. Notes Section
     private var notesSection: some View {
         Section("Notes") {
             TextField("Workout notes...", text: $viewModel.note)
@@ -208,74 +188,53 @@ extension AddWorkoutView {
     }
 }
 
-// MARK: - Rest Timer Component
+// MARK: - Helper Views
+
 struct RestTimerSection: View {
     @State private var timeRemaining: Int = 0
     @State private var timer: Timer? = nil
     @State private var isRunning = false
     
-    // Presets in seconds
     let presets = [30, 60, 90, 120]
     
     var body: some View {
         Section("Rest Timer") {
             VStack(spacing: 15) {
-                // Time Display
                 Text(formatTime(timeRemaining))
                     .font(.system(size: 40, weight: .bold, design: .monospaced))
                     .foregroundColor(timeRemaining > 0 ? .primary : .secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                 
-                // Controls
                 HStack(spacing: 20) {
                     if isRunning {
                         Button(action: pauseTimer) {
-                            Label("Pause", systemImage: "pause.fill")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .tint(.orange)
+                            Label("Pause", systemImage: "pause.fill").frame(maxWidth: .infinity)
+                        }.tint(.orange)
                     } else {
                         Button(action: startTimer) {
-                            Label("Start", systemImage: "play.fill")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .tint(.green)
-                        .disabled(timeRemaining == 0)
+                            Label("Start", systemImage: "play.fill").frame(maxWidth: .infinity)
+                        }.tint(.green).disabled(timeRemaining == 0)
                     }
                     
                     Button(action: resetTimer) {
-                        Label("Reset", systemImage: "arrow.counterclockwise")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .tint(.red)
+                        Label("Reset", systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity)
+                    }.tint(.red)
                 }
                 .buttonStyle(.bordered)
                 
-                // Presets
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(presets, id: \.self) { seconds in
-                            Button("\(seconds)s") {
-                                setTime(seconds)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.blue)
+                            Button("\(seconds)s") { setTime(seconds) }
+                            .buttonStyle(.bordered).tint(.blue)
                         }
-                        
-                        Button("+15s") {
-                            addTime(15)
-                        }
-                        .buttonStyle(.bordered)
+                        Button("+15s") { addTime(15) }.buttonStyle(.bordered)
                     }
                 }
             }
             .padding(.vertical, 8)
         }
     }
-    
-    // MARK: - Timer Logic
     
     func formatTime(_ totalSeconds: Int) -> String {
         let minutes = totalSeconds / 60
@@ -296,34 +255,15 @@ struct RestTimerSection: View {
     func startTimer() {
         guard !isRunning && timeRemaining > 0 else { return }
         isRunning = true
-        
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            if timeRemaining > 0 {
-                timeRemaining -= 1
-            } else {
-                // Timer Finished
-                playAlertSound()
-                stopTimer()
-            }
+            if timeRemaining > 0 { timeRemaining -= 1 }
+            else { playAlertSound(); stopTimer() }
         }
     }
     
-    func pauseTimer() {
-        isRunning = false
-        timer?.invalidate()
-        timer = nil
-    }
-    
-    func stopTimer() {
-        isRunning = false
-        timer?.invalidate()
-        timer = nil
-    }
-    
-    func resetTimer() {
-        stopTimer()
-        timeRemaining = 0
-    }
+    func pauseTimer() { isRunning = false; timer?.invalidate(); timer = nil }
+    func stopTimer() { isRunning = false; timer?.invalidate(); timer = nil }
+    func resetTimer() { stopTimer(); timeRemaining = 0 }
     
     func playAlertSound() {
         AudioServicesPlaySystemSound(1005)
@@ -332,7 +272,6 @@ struct RestTimerSection: View {
     }
 }
 
-// MARK: - Subview for Editable Row
 struct EditExerciseRow: View {
     @Bindable var exercise: ExerciseEntry
     let index: Int
@@ -354,72 +293,39 @@ struct EditExerciseRow: View {
         
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Set \(index + 1)")
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(.secondary)
-                    .frame(width: 45, alignment: .leading)
-                
+                Text("Set \(index + 1)").font(.caption).fontWeight(.bold).foregroundColor(.secondary).frame(width: 45, alignment: .leading)
                 Divider()
                 
                 if exercise.isCardio {
                     HStack {
-                        TextField("Dist", value: distBinding, format: .number)
-                            .keyboardType(.decimalPad)
-                            .frame(width: 60)
+                        TextField("Dist", value: distBinding, format: .number).keyboardType(.decimalPad).frame(width: 60)
                         Text(distLabel)
-                        
                         Spacer()
-                        
-                        TextField("Time", value: $exercise.duration, format: .number)
-                            .keyboardType(.numberPad)
-                            .frame(width: 60)
+                        TextField("Time", value: $exercise.duration, format: .number).keyboardType(.numberPad).frame(width: 60)
                         Text("min")
-                    }
-                    .foregroundColor(.blue)
+                    }.foregroundColor(.blue)
                 } else {
                     HStack {
-                        TextField("Reps", value: $exercise.reps, format: .number)
-                            .keyboardType(.numberPad)
-                            .frame(width: 40)
-                            .multilineTextAlignment(.trailing)
-                            .padding(4)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(5)
-                        
+                        TextField("Reps", value: $exercise.reps, format: .number).keyboardType(.numberPad).frame(width: 40).multilineTextAlignment(.trailing).padding(4).background(Color.gray.opacity(0.1)).cornerRadius(5)
                         Text("reps").font(.caption).foregroundColor(.secondary)
-                        
                         Spacer()
                         Text("x").foregroundColor(.secondary)
                         Spacer()
-                        
-                        TextField("Weight", value: weightBinding, format: .number)
-                            .keyboardType(.decimalPad)
-                            .frame(width: 60)
-                            .multilineTextAlignment(.trailing)
-                            .padding(4)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(5)
-                        
+                        TextField("Weight", value: weightBinding, format: .number).keyboardType(.decimalPad).frame(width: 60).multilineTextAlignment(.trailing).padding(4).background(Color.gray.opacity(0.1)).cornerRadius(5)
                         Text(weightLabel).font(.caption).foregroundColor(.secondary)
                     }
                 }
             }
-            
-            TextField("Add note...", text: $exercise.note)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.leading, 60)
+            TextField("Add note...", text: $exercise.note).font(.caption).foregroundColor(.secondary).padding(.leading, 60)
         }
         .padding(.vertical, 2)
     }
 }
 
-// MARK: - Add Exercise Sheet
-
 struct AddExerciseSheet: View {
     @Binding var exercises: [ExerciseEntry]
     var workoutMuscles: Set<String>
+    var profile: UserProfile
     
     @Environment(\.dismiss) var dismiss
     @Query(sort: \ExerciseDefinition.name) private var libraryExercises: [ExerciseDefinition]
@@ -448,7 +354,7 @@ struct AddExerciseSheet: View {
             List {
                 Section {
                     NavigationLink {
-                        CustomExerciseForm(onSave: { newEx in
+                        CustomExerciseForm(profile: profile, onSave: { newEx in
                             exercises.append(newEx)
                             dismiss()
                         })
@@ -505,8 +411,6 @@ struct AddExerciseSheet: View {
     }
 }
 
-// MARK: - Helper Views
-
 struct ExerciseRow: View {
     let exercise: ExerciseDefinition
     let action: () -> Void
@@ -515,31 +419,16 @@ struct ExerciseRow: View {
         Button(action: action) {
             HStack {
                 VStack(alignment: .leading) {
-                    Text(exercise.name)
-                        .font(.headline)
-                        .foregroundColor(.primary)
+                    Text(exercise.name).font(.headline).foregroundColor(.primary)
                     if !exercise.muscleGroups.isEmpty {
-                        Text(exercise.muscleGroups.joined(separator: ", "))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        Text(exercise.muscleGroups.joined(separator: ", ")).font(.caption).foregroundColor(.secondary)
                     }
                 }
                 Spacer()
-                
                 if exercise.isCardio {
-                    Image(systemName: "heart.fill")
-                        .foregroundColor(.red)
-                        .font(.caption)
-                        .padding(6)
-                        .background(Color.red.opacity(0.1))
-                        .clipShape(Circle())
+                    Image(systemName: "heart.fill").foregroundColor(.red).font(.caption).padding(6).background(Color.red.opacity(0.1)).clipShape(Circle())
                 } else {
-                    Image(systemName: "dumbbell.fill")
-                        .foregroundColor(.blue)
-                        .font(.caption)
-                        .padding(6)
-                        .background(Color.blue.opacity(0.1))
-                        .clipShape(Circle())
+                    Image(systemName: "dumbbell.fill").foregroundColor(.blue).font(.caption).padding(6).background(Color.blue.opacity(0.1)).clipShape(Circle())
                 }
             }
             .contentShape(Rectangle())
@@ -550,6 +439,7 @@ struct ExerciseRow: View {
 
 struct CustomExerciseForm: View {
     @Environment(\.modelContext) private var modelContext
+    var profile: UserProfile
     var onSave: (ExerciseEntry) -> Void
     
     @State private var name = ""
@@ -558,6 +448,16 @@ struct CustomExerciseForm: View {
     
     @State private var saveToLibrary = false
     @State private var selectedMuscles: Set<String> = []
+    
+    // FIX: Combine all sources of muscles to ensure Forearms shows up
+    var availableMuscles: [String] {
+        let standard = Set(MuscleGroup.allCases.map { $0.rawValue })
+        let custom = Set(profile.customMuscles.components(separatedBy: ","))
+        let tracked = Set(profile.trackedMuscles.components(separatedBy: ","))
+        
+        let all = standard.union(custom).union(tracked)
+        return Array(all.filter { !$0.isEmpty }).sorted()
+    }
     
     var body: some View {
         Form {
@@ -575,20 +475,20 @@ struct CustomExerciseForm: View {
             
             if saveToLibrary {
                 Section("Target Muscles (Required)") {
-                    ForEach(MuscleGroup.allCases, id: \.self) { muscle in
+                    ForEach(availableMuscles, id: \.self) { muscle in
                         HStack {
-                            Text(muscle.rawValue)
+                            Text(muscle)
                             Spacer()
-                            if selectedMuscles.contains(muscle.rawValue) {
+                            if selectedMuscles.contains(muscle) {
                                 Image(systemName: "checkmark").foregroundColor(.blue)
                             }
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if selectedMuscles.contains(muscle.rawValue) {
-                                selectedMuscles.remove(muscle.rawValue)
+                            if selectedMuscles.contains(muscle) {
+                                selectedMuscles.remove(muscle)
                             } else {
-                                selectedMuscles.insert(muscle.rawValue)
+                                selectedMuscles.insert(muscle)
                             }
                         }
                     }
@@ -600,10 +500,8 @@ struct CustomExerciseForm: View {
             }
             .disabled(isInvalid)
         }
-        // --- FIX START: Prevents "Blank Screen" Glitch ---
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .scrollDismissesKeyboard(.interactively)
-        // --- FIX END ---
         .navigationTitle("Custom Exercise")
     }
     
@@ -632,7 +530,6 @@ struct CustomExerciseForm: View {
     }
 }
 
-// MARK: - Template Loader
 struct LoadTemplateSheet: View {
     let templates: [WorkoutTemplate]
     let onSelect: (WorkoutTemplate) -> Void
@@ -678,18 +575,28 @@ struct LoadTemplateSheet: View {
     }
 }
 
-// MARK: - New Muscle Selection List View
+// FIX: Update MuscleSelectionList to also see Forearms
 struct MuscleSelectionList: View {
     @Binding var selectedMuscles: Set<String>
+    var profile: UserProfile
+    
+    var availableMuscles: [String] {
+        let standard = Set(MuscleGroup.allCases.map { $0.rawValue })
+        let custom = Set(profile.customMuscles.components(separatedBy: ","))
+        let tracked = Set(profile.trackedMuscles.components(separatedBy: ","))
+        
+        let all = standard.union(custom).union(tracked)
+        return Array(all.filter { !$0.isEmpty }).sorted()
+    }
     
     var body: some View {
         Form {
             Section {
-                ForEach(MuscleGroup.allCases, id: \.self) { muscle in
+                ForEach(availableMuscles, id: \.self) { muscle in
                     HStack {
-                        Text(muscle.rawValue)
+                        Text(muscle)
                         Spacer()
-                        if selectedMuscles.contains(muscle.rawValue) {
+                        if selectedMuscles.contains(muscle) {
                             Image(systemName: "checkmark")
                                 .foregroundColor(.blue)
                                 .fontWeight(.bold)
@@ -697,10 +604,10 @@ struct MuscleSelectionList: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        if selectedMuscles.contains(muscle.rawValue) {
-                            selectedMuscles.remove(muscle.rawValue)
+                        if selectedMuscles.contains(muscle) {
+                            selectedMuscles.remove(muscle)
                         } else {
-                            selectedMuscles.insert(muscle.rawValue)
+                            selectedMuscles.insert(muscle)
                         }
                     }
                 }

@@ -7,8 +7,11 @@ struct ExerciseLibraryView: View {
     
     @Query(sort: \ExerciseDefinition.name) private var exercises: [ExerciseDefinition]
     
+    // UPDATED: Accept profile to access custom muscles
+    var profile: UserProfile
+    
     @State private var showingAddSheet = false
-    @State private var exerciseToEdit: ExerciseDefinition? // State to track which exercise is being edited
+    @State private var exerciseToEdit: ExerciseDefinition?
     
     var body: some View {
         NavigationStack {
@@ -32,7 +35,7 @@ struct ExerciseLibraryView: View {
                                 Image(systemName: "dumbbell.fill").foregroundColor(.blue).font(.caption)
                             }
                         }
-                        .contentShape(Rectangle()) // Make the whole row tappable
+                        .contentShape(Rectangle())
                         .onTapGesture {
                             exerciseToEdit = exercise
                         }
@@ -59,11 +62,13 @@ struct ExerciseLibraryView: View {
             }
             // Sheet for Adding (New)
             .sheet(isPresented: $showingAddSheet) {
-                ExerciseDefinitionSheet(exerciseToEdit: nil)
+                // UPDATED: Pass profile
+                ExerciseDefinitionSheet(profile: profile, exerciseToEdit: nil)
             }
             // Sheet for Editing (Existing)
             .sheet(item: $exerciseToEdit) { exercise in
-                ExerciseDefinitionSheet(exerciseToEdit: exercise)
+                // UPDATED: Pass profile
+                ExerciseDefinitionSheet(profile: profile, exerciseToEdit: exercise)
             }
         }
     }
@@ -82,13 +87,27 @@ struct ExerciseDefinitionSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
+    // UPDATED: Accept profile
+    var profile: UserProfile
     var exerciseToEdit: ExerciseDefinition?
     
     @State private var name = ""
     @State private var isCardio = false
     @State private var selectedMuscles: Set<String> = []
     
-    init(exerciseToEdit: ExerciseDefinition? = nil) {
+    // UPDATED: Combine Standard + Custom + Tracked muscles
+    var availableMuscles: [String] {
+        let standard = Set(MuscleGroup.allCases.map { $0.rawValue })
+        let custom = Set(profile.customMuscles.components(separatedBy: ","))
+        let tracked = Set(profile.trackedMuscles.components(separatedBy: ","))
+        
+        let all = standard.union(custom).union(tracked)
+        return Array(all.filter { !$0.isEmpty }).sorted()
+    }
+    
+    // UPDATED: Init now takes profile
+    init(profile: UserProfile, exerciseToEdit: ExerciseDefinition? = nil) {
+        self.profile = profile
         self.exerciseToEdit = exerciseToEdit
         
         // Pre-populate fields if editing
@@ -108,29 +127,28 @@ struct ExerciseDefinitionSheet: View {
                 }
                 
                 Section("Target Muscles") {
-                    ForEach(MuscleGroup.allCases, id: \.self) { muscle in
+                    // UPDATED: Iterate over the combined list so Forearms shows up
+                    ForEach(availableMuscles, id: \.self) { muscle in
                         HStack {
-                            Text(muscle.rawValue)
+                            Text(muscle)
                             Spacer()
-                            if selectedMuscles.contains(muscle.rawValue) {
+                            if selectedMuscles.contains(muscle) {
                                 Image(systemName: "checkmark").foregroundColor(.blue)
                             }
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if selectedMuscles.contains(muscle.rawValue) {
-                                selectedMuscles.remove(muscle.rawValue)
+                            if selectedMuscles.contains(muscle) {
+                                selectedMuscles.remove(muscle)
                             } else {
-                                selectedMuscles.insert(muscle.rawValue)
+                                selectedMuscles.insert(muscle)
                             }
                         }
                     }
                 }
             }
-            // --- FIX START: Prevents "Blank Screen" Glitch ---
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .scrollDismissesKeyboard(.interactively)
-            // --- FIX END ---
             .navigationTitle(exerciseToEdit == nil ? "New Exercise" : "Edit Exercise")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

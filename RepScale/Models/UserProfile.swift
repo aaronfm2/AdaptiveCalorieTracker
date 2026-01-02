@@ -30,6 +30,8 @@ final class UserProfile {
     
     // MARK: - Workout Preferences (NEW)
     var trackedMuscles: String = "Chest,Back,Legs,Shoulders,Abs,Cardio,Biceps,Triceps"
+    // NEW: Persistent storage for user-defined muscles so they aren't lost when untracked
+    var customMuscles: String = ""
     var weeklyWorkoutGoal: Int = 3 // Default to 3 workouts per week
     
     init() {
