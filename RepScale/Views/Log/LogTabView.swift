@@ -291,6 +291,10 @@ struct LogTabView: View {
                     }
                 }
             }
+            // --- FIX START: Prevents "Blank Screen" Glitch ---
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .scrollDismissesKeyboard(.interactively)
+            // --- FIX END ---
             .navigationTitle("Log Details")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -301,7 +305,7 @@ struct LogTabView: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
     }
 
     private func saveLog() {

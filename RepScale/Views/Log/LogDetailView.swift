@@ -58,6 +58,10 @@ struct LogDetailView: View {
             }
             .padding(.bottom, 30)
         }
+        // --- FIX START: Prevents "Blank Screen" Glitch for Daily Notes ---
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .scrollDismissesKeyboard(.interactively)
+        // --- FIX END ---
         .background(appBackgroundColor)
         .navigationTitle("Daily Summary")
         .navigationBarTitleDisplayMode(.inline)
@@ -382,6 +386,10 @@ struct EditOverridesSheet: View {
                 }
                 Section(footer: Text("Adjusting these values updates the Total instantly. HealthKit data remains the baseline.")) { }
             }
+            // --- FIX START: Prevents "Blank Screen" Glitch in Sheet ---
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .scrollDismissesKeyboard(.interactively)
+            // --- FIX END ---
             .navigationTitle("Edit Manual Entries")
             .toolbar {
                 Button("Done") {

@@ -83,6 +83,10 @@ struct WeightEntryDetailView: View {
                 }
             }
         }
+        // --- FIX START: Prevents "Blank Screen" Glitch ---
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .scrollDismissesKeyboard(.interactively)
+        // --- FIX END ---
         // --- Added: Apply Background Color ---
         .scrollContentBackground(.hidden)
         .background(appBackgroundColor)

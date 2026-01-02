@@ -127,6 +127,10 @@ struct ExerciseDefinitionSheet: View {
                     }
                 }
             }
+            // --- FIX START: Prevents "Blank Screen" Glitch ---
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .scrollDismissesKeyboard(.interactively)
+            // --- FIX END ---
             .navigationTitle(exerciseToEdit == nil ? "New Exercise" : "Edit Exercise")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -36,6 +36,10 @@ struct AddWorkoutView: View {
                 
                 notesSection
             }
+            // --- FIX START: Prevents "Blank Screen" Glitch ---
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .scrollDismissesKeyboard(.interactively)
+            // --- FIX END ---
             .navigationTitle(workoutToEdit == nil ? "Log Workout" : "Edit Workout")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -596,6 +600,10 @@ struct CustomExerciseForm: View {
             }
             .disabled(isInvalid)
         }
+        // --- FIX START: Prevents "Blank Screen" Glitch ---
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .scrollDismissesKeyboard(.interactively)
+        // --- FIX END ---
         .navigationTitle("Custom Exercise")
     }
     

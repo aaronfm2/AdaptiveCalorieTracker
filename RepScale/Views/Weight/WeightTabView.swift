@@ -184,6 +184,10 @@ struct WeightTrackerView: View {
                                 .disabled(newWeight.isEmpty)
                         }
                     }
+                    // --- FIX START: Prevents "Blank Screen" Glitch ---
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
+                    .scrollDismissesKeyboard(.interactively)
+                    // --- FIX END ---
                     .navigationTitle("Log Weight")
                     .toolbar {
                         ToolbarItemGroup(placement: .keyboard) {
@@ -195,7 +199,7 @@ struct WeightTrackerView: View {
                         }
                     }
                 }
-                .presentationDetents([.medium])
+                .presentationDetents([.large])
             }
             .sheet(item: $selectedEntry) { entry in
                 EditWeightView(
@@ -321,6 +325,10 @@ struct EditWeightView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
+            // --- FIX START: Prevents "Blank Screen" Glitch ---
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .scrollDismissesKeyboard(.interactively)
+            // --- FIX END ---
             .navigationTitle("Edit Entry")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -328,7 +336,7 @@ struct EditWeightView: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.large])
     }
 }
 
