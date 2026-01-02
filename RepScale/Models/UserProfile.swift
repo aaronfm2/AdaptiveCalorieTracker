@@ -27,6 +27,9 @@ final class UserProfile {
     var dashboardLayoutJSON: String = ""
     var workoutTimeRange: String = "30 Days"
     var weightHistoryTimeRange: String = "30 Days"
+    var strengthGraphTimeRange: String = "90 Days"
+    var strengthGraphExercise: String = "Barbell Bench Press" // Default
+    var strengthGraphReps: Int = 5
     
     // MARK: - Workout Preferences (NEW)
     var trackedMuscles: String = "Chest,Back,Legs,Shoulders,Abs,Cardio,Biceps,Triceps"

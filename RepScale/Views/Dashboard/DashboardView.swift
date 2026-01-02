@@ -22,6 +22,7 @@ struct DashboardView: View {
     
     @State private var layout: [DashboardCardConfig] = []
     
+    // MARK: - Time Range Properties
     var workoutTimeRange: TimeRange {
         get { TimeRange(rawValue: profile.workoutTimeRange) ?? .thirtyDays }
         nonmutating set { profile.workoutTimeRange = newValue.rawValue }
@@ -30,6 +31,22 @@ struct DashboardView: View {
     var weightHistoryTimeRange: TimeRange {
         get { TimeRange(rawValue: profile.weightHistoryTimeRange) ?? .thirtyDays }
         nonmutating set { profile.weightHistoryTimeRange = newValue.rawValue }
+    }
+    
+    // MARK: - Strength Tracker Properties (NEW)
+    var strengthTimeRange: TimeRange {
+        get { TimeRange(rawValue: profile.strengthGraphTimeRange) ?? .ninetyDays }
+        nonmutating set { profile.strengthGraphTimeRange = newValue.rawValue }
+    }
+    
+    var strengthExercise: String {
+        get { profile.strengthGraphExercise }
+        nonmutating set { profile.strengthGraphExercise = newValue }
+    }
+    
+    var strengthReps: Int {
+        get { profile.strengthGraphReps }
+        nonmutating set { profile.strengthGraphReps = newValue }
     }
     
     @State private var showingSettings = false
@@ -139,6 +156,8 @@ struct DashboardView: View {
             workoutDistributionCard(index: index, totalCount: totalCount)
         case .weeklyWorkoutGoal:
             weeklyGoalCard(index: index, totalCount: totalCount)
+        case .strengthTracker: // <--- NEW CARD CASE
+            strengthTrackerCard(index: index, totalCount: totalCount)
         }
     }
     
@@ -188,6 +207,15 @@ struct DashboardView: View {
                 visibleMethods = [EstimationMethod.weightTrend30Day.displayName]
             }
         }
+        
+        // Default strength exercise initialization
+        if strengthExercise.isEmpty {
+            // Find most recent exercise, or default to a common one
+            if let recent = workouts.first?.exercises?.first?.name {
+                strengthExercise = recent
+            }
+        }
+        
         refreshViewModel()
     }
     
@@ -641,6 +669,176 @@ struct DashboardView: View {
         }.padding().background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
     }
     
+    // MARK: - NEW: Strength Tracker Card
+    private func strengthTrackerCard(index: Int, totalCount: Int) -> some View {
+        // 1. Data Preparation
+        // Get all unique exercise names from all workouts to populate the picker
+        let allExercises = Array(Set(workouts.flatMap { $0.exercises ?? [] }.map { $0.name })).sorted()
+        
+        // Filter Workouts by Time Range
+        let filteredWorkouts: [Workout]
+        if let startDate = strengthTimeRange.startDate(from: Date()) {
+            filteredWorkouts = workouts.filter { $0.date >= startDate }
+        } else {
+            filteredWorkouts = workouts
+        }
+        
+        // 2. Extract Data Points: (Date, MaxWeight)
+        // Group by Date first to find max weight for that day matching criteria
+        var graphData: [(date: Date, weight: Double)] = []
+        
+        let groupedByDate = Dictionary(grouping: filteredWorkouts, by: { Calendar.current.startOfDay(for: $0.date) })
+        
+        for (date, daysWorkouts) in groupedByDate {
+            var maxWeightForDay: Double = 0
+            var found = false
+            
+            for workout in daysWorkouts {
+                guard let exercises = workout.exercises else { continue }
+                for entry in exercises where entry.name == strengthExercise {
+                    // Check Rep Filter
+                    let reps = entry.reps ?? 0
+                    let matchesReps: Bool
+                    if strengthReps == 21 { // "20+" case
+                        matchesReps = reps >= 20
+                    } else {
+                        matchesReps = reps == strengthReps
+                    }
+                    
+                    if matchesReps, let weight = entry.weight {
+                        let converted = weight.toUserWeight(system: profile.unitSystem)
+                        if converted > maxWeightForDay {
+                            maxWeightForDay = converted
+                            found = true
+                        }
+                    }
+                }
+            }
+            if found {
+                graphData.append((date: date, weight: maxWeightForDay))
+            }
+        }
+        
+        graphData.sort { $0.date < $1.date }
+        
+        let weightsList = graphData.map { $0.weight }
+        let lowerBound = max(0, (weightsList.min() ?? 0) - 10)
+        let upperBound = (weightsList.max() ?? 100) + 10
+        
+        return VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                Text("Strength Tracker").font(.headline)
+                Spacer()
+                reorderArrows(index: index, totalCount: totalCount)
+            }
+            
+            // Filters Row
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // Exercise Selector
+                    Menu {
+                        if allExercises.isEmpty {
+                            Text("No exercises logged")
+                        } else {
+                            ForEach(allExercises, id: \.self) { name in
+                                Button(name) { strengthExercise = name }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(strengthExercise.isEmpty ? "Select Exercise" : strengthExercise)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                        }
+                        .font(.caption).fontWeight(.medium)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.1), in: Capsule())
+                        .foregroundColor(.blue)
+                    }
+                    
+                    // Reps Selector
+                    Menu {
+                        ForEach(1...20, id: \.self) { i in
+                            Button("\(i) Reps") { strengthReps = i }
+                        }
+                        Button("20+ Reps") { strengthReps = 21 }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(strengthReps == 21 ? "20+ Reps" : "\(strengthReps) Reps")
+                            Image(systemName: "chevron.down")
+                        }
+                        .font(.caption).fontWeight(.medium)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(Color.green.opacity(0.1), in: Capsule())
+                        .foregroundColor(.green)
+                    }
+                    
+                    // Time Range Selector
+                    Menu {
+                        ForEach(TimeRange.allCases) { range in
+                            Button(range.rawValue) { strengthTimeRange = range }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(strengthTimeRange.rawValue)
+                            Image(systemName: "chevron.down")
+                        }
+                        .font(.caption).fontWeight(.medium)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(Color.orange.opacity(0.1), in: Capsule())
+                        .foregroundColor(.orange)
+                    }
+                }
+            }
+            
+            // Chart
+            if graphData.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "dumbbell.fill")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary.opacity(0.3))
+                    Text("No data found")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("Try adjusting the filters or log this exercise.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 200)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(12)
+            } else {
+                Chart {
+                    ForEach(graphData, id: \.date) { item in
+                        LineMark(
+                            x: .value("Date", item.date),
+                            y: .value("Weight", item.weight)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
+                        .symbol {
+                            Circle().fill(.blue).frame(width: 8, height: 8)
+                                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        }
+                    }
+                }
+                .frame(height: 220)
+                .chartYScale(domain: lowerBound...upperBound)
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 5)) { _ in
+                        AxisGridLine()
+                        AxisTick()
+                        AxisValueLabel(format: .dateTime.month().day())
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
+    }
+    
     private func byCategoryColor(_ cat: String) -> Color {
         switch cat.lowercased() {
         case "push": return .red; case "pull": return .blue; case "legs": return .green; case "cardio": return .orange
@@ -682,7 +880,6 @@ struct WeeklyGoalEditSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    // UPDATED: Limit range to 7 days
                     Stepper("Goal: \(goal) days", value: $goal, in: 1...7)
                 } footer: {
                     Text("Set your target for the number of days you want to work out each week.")

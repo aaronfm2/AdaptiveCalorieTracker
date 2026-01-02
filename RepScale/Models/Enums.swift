@@ -90,6 +90,7 @@ enum DashboardCardType: String, CaseIterable, Codable, Identifiable {
     case weightTrend = "Weight History"
     case workoutDistribution = "Workout Focus"
     case weeklyWorkoutGoal = "Weekly Goal"
+    case strengthTracker = "Strength Tracker"
     
     var id: String { rawValue }
 }
@@ -99,6 +100,8 @@ enum TimeRange: String, CaseIterable, Identifiable {
     case sevenDays = "7 Days"
     case thirtyDays = "30 Days"
     case ninetyDays = "90 Days"
+    case oneHundredEightyDays = "180 Days"
+    case oneYear = "1 Year"
     case allTime = "All Time"
     
     var id: String { rawValue }
@@ -108,6 +111,8 @@ enum TimeRange: String, CaseIterable, Identifiable {
         case .sevenDays: return Calendar.current.date(byAdding: .day, value: -7, to: now)
         case .thirtyDays: return Calendar.current.date(byAdding: .day, value: -30, to: now)
         case .ninetyDays: return Calendar.current.date(byAdding: .day, value: -90, to: now)
+        case .oneHundredEightyDays: return Calendar.current.date(byAdding: .day, value: -180, to: now) // <--- ADDED
+        case .oneYear: return Calendar.current.date(byAdding: .year, value: -1, to: now)
         case .allTime: return nil
         }
     }

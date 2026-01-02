@@ -170,20 +170,46 @@ struct WorkoutHistoryView: View {
                 } else {
                     if filterType == .exercise {
                         ForEach(filteredWorkouts) { workout in
-                            Section(header:
-                                HStack {
-                                    Text(workout.date, format: .dateTime.weekday().day().month().year())
-                                    Spacer()
-                                    Text(workout.category).font(.caption).foregroundColor(.blue)
-                                }
-                            ) {
-                                // Filter specific entries inside the workout to match the selected reps
-                                let relevantEntries = (workout.exercises ?? []).filter { entry in
-                                    entry.name == selectedExercise && checkRepMatch(reps: entry.reps)
-                                }
-                                
-                                ForEach(relevantEntries) { entry in
-                                    ExerciseHistoryRow(entry: entry, profile: profile)
+                            // Filter logic extracted here to check emptiness
+                            let relevantEntries = (workout.exercises ?? []).filter { entry in
+                                entry.name == selectedExercise && checkRepMatch(reps: entry.reps)
+                            }
+                            
+                            if !relevantEntries.isEmpty {
+                                Section(header:
+                                    VStack(alignment: .trailing, spacing: 4) {
+                                        HStack {
+                                            Text(workout.date, format: .dateTime.weekday().day().month().year())
+                                                .font(.headline)
+                                                .foregroundColor(.primary)
+                                            Spacer()
+                                            Text(workout.category)
+                                                .font(.caption2)
+                                                .fontWeight(.bold)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(Color.blue.opacity(0.1))
+                                                .foregroundColor(.blue)
+                                                .cornerRadius(6)
+                                        }
+                                        
+                                        if !workout.note.isEmpty {
+                                            Text(workout.note)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                                .multilineTextAlignment(.trailing)
+                                        }
+                                    }
+                                    .padding(.bottom, 4)
+                                ) {
+                                    // Single Row Container for the Day
+                                    // Grouped sets without dividers
+                                    VStack(spacing: 0) {
+                                        ForEach(relevantEntries) { entry in
+                                            ExerciseHistoryRow(entry: entry, profile: profile)
+                                                .padding(.vertical, 8)
+                                        }
+                                    }
                                 }
                             }
                         }
