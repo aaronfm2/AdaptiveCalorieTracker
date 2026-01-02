@@ -4,6 +4,9 @@ import SwiftData
 struct OnboardingView: View {
     @Environment(\.modelContext) private var modelContext
     
+    // --- APP STORAGE: Controls transition back to Main App ---
+    @AppStorage("isOnboardingCompleted") private var isOnboardingCompleted: Bool = false
+    
     // MARK: - Navigation State
     @State private var currentStep = 0
     @FocusState private var isInputFocused: Bool
@@ -63,7 +66,7 @@ struct OnboardingView: View {
                         .padding(.top, 10)
                 }
                 
-                // Content
+                // Content Area
                 TabView(selection: $currentStep) {
                     welcomeStep.tag(0)
                     biometricsStep.tag(1)
@@ -133,12 +136,32 @@ struct OnboardingView: View {
                     .padding(.bottom, 20)
                 }
             }
+            
+            // --- CLOSE KEYBOARD BUTTON OVERLAY ---
+            if isInputFocused {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button("Done") {
+                            hideKeyboard()
+                        }
+                        .font(.headline)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 16)
+                        .background(Material.thinMaterial)
+                        .clipShape(Capsule())
+                        .padding()
+                        .shadow(radius: 5)
+                    }
+                    Spacer()
+                }
+                .transition(.opacity)
+                .zIndex(100)
+            }
         }
         .preferredColorScheme(isDarkMode ? .dark : .light)
         .onTapGesture { hideKeyboard() }
-        // --- FIX START: Prevents Blank Screen Glitch ---
         .ignoresSafeArea(.keyboard, edges: .bottom)
-        // --- FIX END ---
     }
     
     // MARK: - Validation
@@ -201,7 +224,7 @@ struct OnboardingView: View {
                                 .padding(.vertical, 10)
                                 .background(unitSystem == system ? Color.blue : Color.clear)
                                 .foregroundColor(unitSystem == system ? .white : .primary)
-                                .contentShape(Rectangle()) // Make tappable
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -249,7 +272,6 @@ struct OnboardingView: View {
             }
             .padding(.top)
         }
-        // --- UX Fix: Allows swipe to dismiss keyboard ---
         .scrollDismissesKeyboard(.interactively)
     }
     
@@ -345,7 +367,6 @@ struct OnboardingView: View {
             }
             .padding(.top)
         }
-        // --- UX Fix: Allows swipe to dismiss keyboard ---
         .scrollDismissesKeyboard(.interactively)
     }
 
@@ -474,7 +495,6 @@ struct OnboardingView: View {
             }
             .padding(.top)
         }
-        // --- UX Fix: Allows swipe to dismiss keyboard ---
         .scrollDismissesKeyboard(.interactively)
     }
     
@@ -559,9 +579,9 @@ struct OnboardingView: View {
             )
             .cornerRadius(16)
             .foregroundColor(isSelected ? .blue : .primary)
-            .contentShape(Rectangle()) // FIX: Makes the whole card clickable area
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain) // FIX: Prevents style conflicts
+        .buttonStyle(.plain)
     }
     
     private func selectionRow(title: String, subtitle: String, icon: String, color: Color, isSelected: Bool, action: @escaping () -> Void) -> some View {
@@ -594,9 +614,9 @@ struct OnboardingView: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(isSelected ? color : Color.clear, lineWidth: 2)
             )
-            .contentShape(Rectangle()) // FIX: Makes the empty space clickable
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain) // FIX: Prevents style conflicts
+        .buttonStyle(.plain)
     }
     
     private func inputField(title: String, text: Binding<String>) -> some View {
@@ -610,6 +630,7 @@ struct OnboardingView: View {
                 .padding()
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(10)
+                .focused($isInputFocused)
         }
     }
     
@@ -661,6 +682,7 @@ struct OnboardingView: View {
     func completeOnboarding() {
         guard let finalCurrent = currentWeight else { return }
         
+        // 1. Resolve final target
         let finalTarget: Double
         if goalType == .maintenance {
             finalTarget = finalCurrent
@@ -668,12 +690,13 @@ struct OnboardingView: View {
             finalTarget = targetWeight ?? finalCurrent
         }
         
+        // 2. Normalize to storage units (Kg)
         let storedCurrentWeightKg = toKg(finalCurrent)
         let storedTargetWeightKg = toKg(finalTarget)
-        
         let storedMaintenance = Int(maintenanceInput) ?? 2500
         let storedDailyGoal = Int(dailyGoalInput) ?? 2000
         
+        // 3. Create and Save UserProfile
         let profile = UserProfile()
         profile.unitSystem = unitSystem.rawValue
         profile.isDarkMode = isDarkMode
@@ -691,14 +714,12 @@ struct OnboardingView: View {
         
         modelContext.insert(profile)
         
-        // Seed Exercises
+        // 4. Seed Data
         DefaultExercises.seed(context: modelContext)
         
-        // First Weight Entry
         let firstEntry = WeightEntry(date: Date(), weight: storedCurrentWeightKg, note: "")
         modelContext.insert(firstEntry)
               
-        // Start Goal Period
         dataManager.startNewGoalPeriod(
             goalType: goalType.rawValue,
             startWeight: storedCurrentWeightKg,
@@ -706,6 +727,14 @@ struct OnboardingView: View {
             dailyCalorieGoal: storedDailyGoal,
             maintenanceCalories: storedMaintenance
         )
+        
+        // 5. Force Save to Disk
+        try? modelContext.save()
+        
+        // 6. Trigger RootView to switch screens
+        withAnimation {
+            isOnboardingCompleted = true
+        }
     }
 }
 

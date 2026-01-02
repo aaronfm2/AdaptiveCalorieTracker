@@ -41,23 +41,25 @@ struct RepScaleApp: App {
 
 struct RootView: View {
     @Query var userProfiles: [UserProfile]
-    @AppStorage("hasSeenAppTutorial") private var hasSeenAppTutorial: Bool = false
+    
+    // --- NEW: Master switch for Onboarding ---
+    @AppStorage("isOnboardingCompleted") private var isOnboardingCompleted: Bool = false
     
     var body: some View {
         Group {
-            if let profile = userProfiles.first {
-                // Scenario 1: Profile Found -> Show Main App
+            // Check BOTH the flag AND if a profile exists.
+            if isOnboardingCompleted, let profile = userProfiles.first {
+                // Scenario 1: Ready -> Show Main App
                 MainTabView(profile: profile)
                     .preferredColorScheme(profile.isDarkMode ? .dark : .light)
                     .transition(.opacity)
                 
             } else {
-                // Scenario 2: No Profile -> Show Onboarding
-                // (If iCloud is syncing in background, this will swap to MainTabView automatically when data arrives)
+                // Scenario 2: Flag is false OR No Profile -> Show Onboarding
                 OnboardingView()
                     .transition(.opacity)
             }
         }
-        .animation(.default, value: userProfiles.isEmpty)
+        .animation(.default, value: isOnboardingCompleted)
     }
 }

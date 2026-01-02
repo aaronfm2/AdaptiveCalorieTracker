@@ -10,8 +10,9 @@ struct SettingsView: View {
     // --- Access HealthManager to trigger sync ---
     @EnvironmentObject var healthManager: HealthManager
     
-    // --- App Storage for Tutorial Toggle ---
+    // --- App Storage ---
     @AppStorage("hasSeenAppTutorial") private var hasSeenAppTutorial: Bool = true
+    @AppStorage("isOnboardingCompleted") private var isOnboardingCompleted: Bool = true
     
     // Properties passed from Parent
     let estimatedMaintenance: Int?
@@ -22,7 +23,8 @@ struct SettingsView: View {
     @State private var isExporting = false
     @State private var exportURL: URL?
     @State private var showingShareSheet = false
-    @State private var showingResetAlert = false // Alert state for resetting onboarding
+    @State private var showingResetAlert = false
+    @State private var showingRestartAlert = false
     
     // Helper accessors for Profile
     var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
@@ -55,7 +57,6 @@ struct SettingsView: View {
                             .foregroundColor(.primary)
                     }
                     
-                    // Note: Profile stores gender as String, so we tag with rawValue
                     Picker(selection: $profile.gender) {
                         ForEach(Gender.allCases, id: \.self) { gender in
                             Text(gender.rawValue).tag(gender.rawValue)
@@ -97,7 +98,6 @@ struct SettingsView: View {
                 // MARK: - Section 3: Goal Dashboard
                 if profile.isCalorieCountingEnabled {
                     Section {
-                        // Strategy Summary
                         LabeledContent {
                             Text(profile.goalType)
                                 .fontWeight(.semibold)
@@ -116,7 +116,6 @@ struct SettingsView: View {
                             Text("\(profile.targetWeight.toUserWeight(system: profile.unitSystem), specifier: "%.1f") \(weightLabel)")
                         }
                         
-                        // Action Button (Neutral)
                         Button {
                             showingReconfigureGoal = true
                         } label: {
@@ -127,7 +126,6 @@ struct SettingsView: View {
                         Text("Strategy")
                     }
                     
-                    // Technical Settings
                     Section {
                         Picker(selection: $profile.estimationMethod) {
                             ForEach(EstimationMethod.allCases) { method in
@@ -138,7 +136,6 @@ struct SettingsView: View {
                                 .foregroundColor(.primary)
                         }
                         
-                        // Maintenance Tolerance
                         if profile.goalType == GoalType.maintenance.rawValue {
                             let toleranceBinding = Binding<Double>(
                                 get: { profile.maintenanceTolerance.toUserWeight(system: profile.unitSystem) },
@@ -158,8 +155,6 @@ struct SettingsView: View {
                         }
                     } header: {
                         Text("Calculations")
-                    } footer: {
-                        Text("Determines how the dashboard estimates your future progress.")
                     }
                 }
                 
@@ -201,10 +196,24 @@ struct SettingsView: View {
                 
                 // MARK: - Section 6: Debug / Development
                 Section(header: Text("Debug")) {
-                    // 1. Toggle for the Tutorial Overlay
                     Toggle("Tutorial Completed", isOn: $hasSeenAppTutorial)
                     
-                    // 2. Button to Reset Onboarding (Delete Profile)
+                    // 1. RESTART (Safe)
+                    Button("Restart Onboarding (Keep Data)") {
+                        showingRestartAlert = true
+                    }
+                    .foregroundColor(.orange)
+                    .alert("Restart Onboarding?", isPresented: $showingRestartAlert) {
+                        Button("Cancel", role: .cancel) { }
+                        Button("Restart", role: .none) {
+                            // This immediately flips the switch in RootView
+                            isOnboardingCompleted = false
+                        }
+                    } message: {
+                        Text("This will take you back to the welcome screen WITHOUT deleting your data. Note: Finishing onboarding again will create a new profile.")
+                    }
+                    
+                    // 2. RESET (Destructive)
                     Button("Reset Onboarding (Delete Profile)") {
                         showingResetAlert = true
                     }
@@ -215,7 +224,7 @@ struct SettingsView: View {
                             deleteProfileAndReset()
                         }
                     } message: {
-                        Text("This will delete your profile and take you back to the welcome screen. Your weight history will be preserved, but your settings will be lost.")
+                        Text("This will delete ALL profiles and reset the app state.")
                     }
                 }
             }
@@ -237,27 +246,22 @@ struct SettingsView: View {
                     ShareSheet(activityItems: [url])
                 }
             }
-            // Ensure this sheet is also full screen to avoid keyboard bugs
             .presentationDetents([.large])
         }
     }
     
     // MARK: - Reset Logic
     private func deleteProfileAndReset() {
-        // Delete the current profile context
-        modelContext.delete(profile)
+        // Delete ALL profiles to prevent "hidden" duplicates keeping you logged in
+        try? modelContext.delete(model: UserProfile.self)
         
-        // Reset tutorial flag as well so they see the full experience
         hasSeenAppTutorial = false
+        isOnboardingCompleted = false
         
-        // Force save to ensure RootView updates immediately
         try? modelContext.save()
-        
-        // The RootView will automatically switch to OnboardingView because the userProfiles array is now empty.
     }
     
     // MARK: - Export Logic
-    
     private func exportData() {
         isExporting = true
         Task {
@@ -277,7 +281,6 @@ struct SettingsView: View {
     
     @MainActor
     private func generateCSV() -> URL? {
-        // 1. Fetch all data
         let logDescriptor = FetchDescriptor<DailyLog>(sortBy: [SortDescriptor(\.date)])
         let weightDescriptor = FetchDescriptor<WeightEntry>(sortBy: [SortDescriptor(\.date)])
         let workoutDescriptor = FetchDescriptor<Workout>(sortBy: [SortDescriptor(\.date)])
@@ -288,15 +291,12 @@ struct SettingsView: View {
               let workouts = try? modelContext.fetch(workoutDescriptor),
               let goals = try? modelContext.fetch(goalDescriptor) else { return nil }
         
-        // 2. Prepare Unique Sorted Dates (Normalize BEFORE Set)
         let rawDates = logs.map { $0.date } + weights.map { $0.date } + workouts.map { $0.date }
         let uniqueDates = Set(rawDates.map { Calendar.current.startOfDay(for: $0) })
         let sortedDates = uniqueDates.sorted()
         
-        // 3. Pre-calculate Weight Dates for Streak Logic
         let weightDays = Set(weights.map { Calendar.current.startOfDay(for: $0.date) })
         
-        // Helper for Streak
         func getStreak(endingOn date: Date) -> Int {
             guard weightDays.contains(date) else { return 0 }
             var streak = 0
@@ -309,7 +309,6 @@ struct SettingsView: View {
             return streak
         }
         
-        // 4. Build CSV
         var csv = "Date,Goal Type,Current Weight,Current Weight Streak,Goal Weight,Daily weight log notes,Workout Category,Muscles Trained,Sets and Reps completed,Calories Consumed,Calories Burned,Protein,Carbs,Fats,Daily summary notes\n"
         
         let dateFormatter = DateFormatter()
@@ -317,13 +316,10 @@ struct SettingsView: View {
         
         for date in sortedDates {
             let dateStr = dateFormatter.string(from: date)
-            
-            // Find records for this day
             let dayLog = logs.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })
             let dayWeight = weights.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) })
             let dayWorkouts = workouts.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
             
-            // Resolve Goal - FIX: Normalize goal dates to StartOfDay to ignore time mismatches
             let activeGoal = goals.first(where: {
                 let goalStart = Calendar.current.startOfDay(for: $0.startDate)
                 let goalEnd = $0.endDate.map { Calendar.current.startOfDay(for: $0) }
@@ -332,21 +328,16 @@ struct SettingsView: View {
             
             let rowGoalType = dayLog?.goalType ?? activeGoal?.goalType ?? ""
             let rowGoalWeight = activeGoal != nil ? String(format: "%.1f", activeGoal!.targetWeight) : ""
-            
-            // Weight & Streak
             let rowWeight = dayWeight != nil ? String(format: "%.1f", dayWeight!.weight) : ""
             let rowStreak = getStreak(endingOn: date)
             let rowStreakStr = rowStreak > 0 ? "\(rowStreak)" : ""
             let rowWeightNote = clean(dayWeight?.note)
             
-            // Workout Info
             let categories = Set(dayWorkouts.map { $0.category }).joined(separator: "; ")
             let muscles = Set(dayWorkouts.flatMap { $0.muscleGroups }).joined(separator: "; ")
             
-            // Flatten Exercises
             var exerciseDetails: [String] = []
             for w in dayWorkouts {
-                // Handle optional exercises relationship
                 for ex in (w.exercises ?? []) {
                     var details = ex.name
                     if ex.isCardio {
@@ -355,16 +346,13 @@ struct SettingsView: View {
                         if let dur = ex.duration, dur > 0 { parts.append("\(Int(dur))min") }
                         if !parts.isEmpty { details += " (" + parts.joined(separator: ", ") + ")" }
                     } else {
-                        if let r = ex.reps, let wt = ex.weight {
-                            details += " \(r)x\(wt)kg"
-                        }
+                        if let r = ex.reps, let wt = ex.weight { details += " \(r)x\(wt)kg" }
                     }
                     exerciseDetails.append(details)
                 }
             }
             let rowSets = clean(exerciseDetails.joined(separator: "; "))
             
-            // Nutrition
             let rowCalConsumed = dayLog != nil ? "\(dayLog!.caloriesConsumed)" : ""
             let rowCalBurned = dayLog != nil ? "\(dayLog!.caloriesBurned)" : ""
             let rowProt = dayLog?.protein != nil ? "\(dayLog!.protein!)" : ""
@@ -376,7 +364,6 @@ struct SettingsView: View {
             csv.append(row)
         }
         
-        // 5. Write to Temp File
         let tempDir = FileManager.default.temporaryDirectory
         let fileName = "RepScale_Export_\(dateFormatter.string(from: Date())).csv"
         let fileURL = tempDir.appendingPathComponent(fileName)
@@ -385,7 +372,6 @@ struct SettingsView: View {
             try csv.write(to: fileURL, atomically: true, encoding: .utf8)
             return fileURL
         } catch {
-            print("Failed to create CSV: \(error)")
             return nil
         }
     }
@@ -400,7 +386,6 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - Share Sheet Wrapper
 struct ShareSheet: UIViewControllerRepresentable {
     var activityItems: [Any]
     var applicationActivities: [UIActivity]? = nil
