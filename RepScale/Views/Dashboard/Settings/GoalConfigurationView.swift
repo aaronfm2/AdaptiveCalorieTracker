@@ -170,6 +170,10 @@ struct GoalConfigurationView: View {
                     )
                 }
             }
+            // --- FIX START: Prevents "Blank Screen" Glitch ---
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .scrollDismissesKeyboard(.interactively)
+            // --- FIX END ---
             .navigationTitle("Reconfigure Goal")
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {

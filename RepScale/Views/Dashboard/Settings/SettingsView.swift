@@ -10,6 +10,9 @@ struct SettingsView: View {
     // --- Access HealthManager to trigger sync ---
     @EnvironmentObject var healthManager: HealthManager
     
+    // --- App Storage for Tutorial Toggle ---
+    @AppStorage("hasSeenAppTutorial") private var hasSeenAppTutorial: Bool = true
+    
     // Properties passed from Parent
     let estimatedMaintenance: Int?
     let currentWeight: Double?
@@ -19,6 +22,7 @@ struct SettingsView: View {
     @State private var isExporting = false
     @State private var exportURL: URL?
     @State private var showingShareSheet = false
+    @State private var showingResetAlert = false // Alert state for resetting onboarding
     
     // Helper accessors for Profile
     var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
@@ -191,16 +195,28 @@ struct SettingsView: View {
                                 .foregroundColor(.primary)
                         }
                     }
-
-// Add this once I have an app store id.
-//                    if let url = URL(string: "https://apps.apple.com/app/id6757196736?action=write-review") {
-//                        Link(destination: url) {
-//                            Label("Review on AppStore", systemImage: "star")
-//                                .foregroundColor(.primary)
-//                        }
-//                    }
                 } header: {
                     Text("Community")
+                }
+                
+                // MARK: - Section 6: Debug / Development
+                Section(header: Text("Debug")) {
+                    // 1. Toggle for the Tutorial Overlay
+                    Toggle("Tutorial Completed", isOn: $hasSeenAppTutorial)
+                    
+                    // 2. Button to Reset Onboarding (Delete Profile)
+                    Button("Reset Onboarding (Delete Profile)") {
+                        showingResetAlert = true
+                    }
+                    .foregroundColor(.red)
+                    .alert("Reset Onboarding?", isPresented: $showingResetAlert) {
+                        Button("Cancel", role: .cancel) { }
+                        Button("Reset", role: .destructive) {
+                            deleteProfileAndReset()
+                        }
+                    } message: {
+                        Text("This will delete your profile and take you back to the welcome screen. Your weight history will be preserved, but your settings will be lost.")
+                    }
                 }
             }
             .navigationTitle("Settings")
@@ -210,7 +226,6 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showingReconfigureGoal) {
-                // Ensure GoalConfigurationView is updated to accept 'profile'
                 GoalConfigurationView(
                     profile: profile,
                     appEstimatedMaintenance: estimatedMaintenance,
@@ -222,7 +237,23 @@ struct SettingsView: View {
                     ShareSheet(activityItems: [url])
                 }
             }
+            // Ensure this sheet is also full screen to avoid keyboard bugs
+            .presentationDetents([.large])
         }
+    }
+    
+    // MARK: - Reset Logic
+    private func deleteProfileAndReset() {
+        // Delete the current profile context
+        modelContext.delete(profile)
+        
+        // Reset tutorial flag as well so they see the full experience
+        hasSeenAppTutorial = false
+        
+        // Force save to ensure RootView updates immediately
+        try? modelContext.save()
+        
+        // The RootView will automatically switch to OnboardingView because the userProfiles array is now empty.
     }
     
     // MARK: - Export Logic

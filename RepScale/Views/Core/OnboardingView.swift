@@ -136,6 +136,9 @@ struct OnboardingView: View {
         }
         .preferredColorScheme(isDarkMode ? .dark : .light)
         .onTapGesture { hideKeyboard() }
+        // --- FIX START: Prevents Blank Screen Glitch ---
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        // --- FIX END ---
     }
     
     // MARK: - Validation
@@ -246,6 +249,8 @@ struct OnboardingView: View {
             }
             .padding(.top)
         }
+        // --- UX Fix: Allows swipe to dismiss keyboard ---
+        .scrollDismissesKeyboard(.interactively)
     }
     
     // MARK: - Step 2: Goals
@@ -340,6 +345,8 @@ struct OnboardingView: View {
             }
             .padding(.top)
         }
+        // --- UX Fix: Allows swipe to dismiss keyboard ---
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: - Step 3: Strategy
@@ -467,6 +474,8 @@ struct OnboardingView: View {
             }
             .padding(.top)
         }
+        // --- UX Fix: Allows swipe to dismiss keyboard ---
+        .scrollDismissesKeyboard(.interactively)
     }
     
     // MARK: - Step 4: Final
@@ -688,7 +697,7 @@ struct OnboardingView: View {
         // First Weight Entry
         let firstEntry = WeightEntry(date: Date(), weight: storedCurrentWeightKg, note: "")
         modelContext.insert(firstEntry)
-                
+              
         // Start Goal Period
         dataManager.startNewGoalPeriod(
             goalType: goalType.rawValue,
