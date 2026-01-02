@@ -13,7 +13,7 @@ struct WorkoutHistoryView: View {
     
     @State private var filterType: FilterType = .category
     
-    // Defaults are now "All"
+    // Defaults
     @State private var selectedCategory: String = "All"
     @State private var selectedMuscle: String = "All"
     @State private var selectedExercise: String = "All"
@@ -76,11 +76,8 @@ struct WorkoutHistoryView: View {
                                 }
                             }
                         case .exercise:
-                            FilterChip(title: "All", isSelected: selectedExercise == "All") { selectedExercise = "All" }
                             if uniqueExercises.isEmpty {
-                                if selectedExercise != "All" {
-                                    // Should not happen if All is default, but handle empty state
-                                }
+                                Text("No exercises logged yet").font(.caption).foregroundColor(.secondary)
                             } else {
                                 ForEach(uniqueExercises, id: \.self) { ex in
                                     FilterChip(title: ex, isSelected: selectedExercise == ex) {
@@ -98,15 +95,29 @@ struct WorkoutHistoryView: View {
             
             // MARK: - Results List
             List {
-                if filteredWorkouts.isEmpty {
+                if filterType == .exercise && selectedExercise == "All" {
+                    VStack(spacing: 12) {
+                        Image(systemName: "dumbbell.fill")
+                            .font(.largeTitle)
+                            .foregroundColor(.secondary)
+                        Text("Select an exercise")
+                            .font(.headline)
+                        Text("Choose an exercise from the top bar to view its history.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 40)
+                    .listRowBackground(Color.clear)
+                }
+                else if filteredWorkouts.isEmpty {
                     Text("No matching workouts found.")
                         .foregroundColor(.secondary)
                         .listRowBackground(Color.clear)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding()
                 } else {
-                    // Specific Granular View for single Exercise
-                    if filterType == .exercise && selectedExercise != "All" {
+                    if filterType == .exercise {
                         ForEach(filteredWorkouts) { workout in
                             Section(header:
                                 HStack {
@@ -125,7 +136,10 @@ struct WorkoutHistoryView: View {
                         // Standard Workout Summary View
                         ForEach(filteredWorkouts) { workout in
                             NavigationLink(destination: destinationFor(workout)) {
-                                WorkoutHistoryRow(workout: workout)
+                                WorkoutHistoryRow(
+                                    workout: workout,
+                                    showExercises: filterType == .muscle
+                                )
                             }
                         }
                     }
@@ -139,11 +153,9 @@ struct WorkoutHistoryView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
     
-    // Helper to determine destination based on filter
     @ViewBuilder
     func destinationFor(_ workout: Workout) -> some View {
         if filterType == .muscle && selectedMuscle != "All" {
-            // Pass the selected muscle to filter the detail view
             WorkoutDetailView(workout: workout, profile: profile, filterMuscle: selectedMuscle)
         } else {
             WorkoutDetailView(workout: workout, profile: profile)
@@ -180,7 +192,6 @@ struct ExerciseHistoryRow: View {
     var body: some View {
         HStack {
             if entry.isCardio {
-                // Cardio stats
                 HStack(spacing: 8) {
                     Image(systemName: "heart.fill").font(.caption).foregroundColor(.red)
                     if let dist = entry.distance, dist > 0 {
@@ -191,7 +202,6 @@ struct ExerciseHistoryRow: View {
                     }
                 }
             } else {
-                // Strength stats
                 HStack(spacing: 4) {
                     Text("\(entry.reps ?? 0)")
                         .bold()
@@ -208,9 +218,7 @@ struct ExerciseHistoryRow: View {
                         .font(.caption)
                 }
             }
-            
             Spacer()
-            
             if !entry.note.isEmpty {
                 Image(systemName: "note.text")
                     .foregroundColor(.secondary)
@@ -222,8 +230,17 @@ struct ExerciseHistoryRow: View {
 
 struct WorkoutHistoryRow: View {
     let workout: Workout
+    var showExercises: Bool = false
     
     var body: some View {
+        let exercises = workout.exercises ?? []
+        // Calculate unique names maintaining order of appearance
+        let uniqueNames = exercises.map { $0.name }.reduce(into: [String]()) { (result, name) in
+            if !result.contains(name) { result.append(name) }
+        }
+        let uniqueCount = uniqueNames.count
+        let totalSets = exercises.count
+        
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(workout.date, format: .dateTime.day().month().year())
@@ -232,11 +249,29 @@ struct WorkoutHistoryRow: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
-                Text("\(workout.exercises?.count ?? 0) exercises")
-                    .font(.caption).foregroundColor(.secondary)
-                Text(workout.muscleGroups.joined(separator: ", "))
-                    .font(.caption2).foregroundColor(.secondary)
-                    .lineLimit(1)
+                Text(
+                    "\(uniqueCount) \(uniqueCount == 1 ? "exercise" : "exercises"), " +
+                    "\(totalSets) \(totalSets == 1 ? "set" : "sets")"
+                )
+                .font(.caption)
+                .foregroundColor(.secondary)
+                if !exercises.isEmpty {
+                    if showExercises {
+                        // UPDATED: Shows unique list of names (e.g. "Bench Press" only once)
+                        Text(uniqueNames.joined(separator: ", "))
+                            .font(.caption2).foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    } else {
+                        // Shows Muscle Groups
+                        Text(workout.muscleGroups.joined(separator: ", "))
+                            .font(.caption2).foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text("No exercises")
+                        .font(.caption2).foregroundColor(.secondary)
+                }
             }
         }
         .padding(.vertical, 4)
