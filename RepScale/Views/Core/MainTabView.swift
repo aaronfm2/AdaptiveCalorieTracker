@@ -5,15 +5,20 @@ struct MainTabView: View {
     // --- CLOUD SYNC: Profile passed from RootView ---
     @Bindable var profile: UserProfile
     
-    // --- LOCAL STATE: Tutorial status remains local ---
-    @AppStorage("hasSeenAppTutorial") private var hasSeenAppTutorial: Bool = false
+    // --- LOCAL STATE: Per-tab tutorial status ---
+    @AppStorage("hasSeenDashboardTutorial") private var hasSeenDashboardTutorial: Bool = false
+    @AppStorage("hasSeenLogsTutorial") private var hasSeenLogsTutorial: Bool = false
+    @AppStorage("hasSeenWorkoutsTutorial") private var hasSeenWorkoutsTutorial: Bool = false
+    @AppStorage("hasSeenWeightTutorial") private var hasSeenWeightTutorial: Bool = false
     
-    @State private var currentTutorialStepIndex = 0
+    // Tracks the step index for the CURRENT tab's tutorial
+    @State private var currentStepIndex = 0
     @State private var selectedTab = 0
     
     @State private var spotlightRects: [String: CGRect] = [:]
     
     private let tutorialSteps: [TutorialStep] = [
+        // DASHBOARD STEPS (Tab 0)
         TutorialStep(
             id: 0,
             title: "Dashboard Tab",
@@ -42,6 +47,8 @@ struct MainTabView: View {
             tabIndex: 0,
             highlights: []
         ),
+        
+        // LOGS STEPS (Tab 1)
         TutorialStep(
             id: 4,
             title: "Logs Tab",
@@ -56,6 +63,8 @@ struct MainTabView: View {
             tabIndex: 1,
             highlights: [.target(.addLog)]
         ),
+        
+        // WORKOUTS STEPS (Tab 2)
         TutorialStep(
             id: 6,
             title: "Workouts Tab",
@@ -70,6 +79,8 @@ struct MainTabView: View {
             tabIndex: 2,
             highlights: [.target(.addWorkout), .target(.library)]
         ),
+        
+        // WEIGHT STEPS (Tab 3)
         TutorialStep(
             id: 8,
             title: "Weight Tab",
@@ -92,6 +103,24 @@ struct MainTabView: View {
             highlights: [.target(.addWeight)]
         )
     ]
+    
+    // Computed property: Get steps only for the currently selected tab
+    var currentTabSteps: [TutorialStep] {
+        tutorialSteps.filter { $0.tabIndex == selectedTab }
+    }
+    
+    // Computed property: Should we show the tutorial for this tab?
+    var showTutorial: Bool {
+        if currentTabSteps.isEmpty { return false }
+        
+        switch selectedTab {
+        case 0: return !hasSeenDashboardTutorial
+        case 1: return !hasSeenLogsTutorial
+        case 2: return !hasSeenWorkoutsTutorial
+        case 3: return !hasSeenWeightTutorial
+        default: return false
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -117,31 +146,50 @@ struct MainTabView: View {
             }
             // Fix: Force Bottom Tabs on iPad
             .environment(\.horizontalSizeClass, .compact)
+            // Reset the step index whenever the user switches tabs
+            .onChange(of: selectedTab) { _, _ in
+                currentStepIndex = 0
+            }
             
-            if !hasSeenAppTutorial {
-                TutorialOverlayView(
-                    step: tutorialSteps[currentTutorialStepIndex],
-                    spotlightRects: spotlightRects,
-                    onNext: {
-                        withAnimation {
-                            if currentTutorialStepIndex < tutorialSteps.count - 1 {
-                                currentTutorialStepIndex += 1
-                                selectedTab = tutorialSteps[currentTutorialStepIndex].tabIndex
+            // Show tutorial if active for this tab
+            if showTutorial {
+                // Safety check to ensure index is valid for current tab steps
+                if currentStepIndex < currentTabSteps.count {
+                    TutorialOverlayView(
+                        step: currentTabSteps[currentStepIndex],
+                        spotlightRects: spotlightRects,
+                        onNext: {
+                            withAnimation {
+                                if currentStepIndex < currentTabSteps.count - 1 {
+                                    currentStepIndex += 1
+                                }
                             }
-                        }
-                    },
-                    onFinish: {
-                        withAnimation { hasSeenAppTutorial = true }
-                    },
-                    isLastStep: currentTutorialStepIndex == tutorialSteps.count - 1
-                )
-                .zIndex(10)
-                .ignoresSafeArea()
+                        },
+                        onFinish: {
+                            withAnimation {
+                                markCurrentTabAsSeen()
+                            }
+                        },
+                        isLastStep: currentStepIndex == currentTabSteps.count - 1
+                    )
+                    .zIndex(10)
+                    .ignoresSafeArea()
+                }
             }
         }
         .coordinateSpace(name: "TutorialSpace")
         .onPreferenceChange(SpotlightRectsKey.self) { prefs in
             self.spotlightRects = prefs
+        }
+    }
+    
+    private func markCurrentTabAsSeen() {
+        switch selectedTab {
+        case 0: hasSeenDashboardTutorial = true
+        case 1: hasSeenLogsTutorial = true
+        case 2: hasSeenWorkoutsTutorial = true
+        case 3: hasSeenWeightTutorial = true
+        default: break
         }
     }
 }
