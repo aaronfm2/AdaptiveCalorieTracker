@@ -20,6 +20,9 @@ struct WeightEntryDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var photoToDelete: ProgressPhoto?
     
+    // NEW: Premium Alert State
+    @State private var showPremiumAlert = false
+    
     let tags = ["Full Body", "Upper Body", "Arms", "Chest", "Back", "Shoulders", "Legs"]
     var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
 
@@ -44,10 +47,21 @@ struct WeightEntryDetailView: View {
             }
             
             Section("Progress Photos") {
+                // PREMIUM LOCK: Add Photos
                 Button {
-                    showImageOptions = true
+                    if profile.isPremium {
+                        showImageOptions = true
+                    } else {
+                        showPremiumAlert = true
+                    }
                 } label: {
-                    Label("Add Photos", systemImage: "photo.badge.plus")
+                    HStack {
+                        Label("Add Photos", systemImage: "photo.badge.plus")
+                        if !profile.isPremium {
+                            Spacer()
+                            Image(systemName: "lock.fill").foregroundColor(.orange)
+                        }
+                    }
                 }
                 .disabled(isProcessingImage) // Disable while processing
                 
@@ -129,6 +143,13 @@ struct WeightEntryDetailView: View {
             }
         } message: {
             Text("Are you sure you want to delete this photo? This action cannot be undone.")
+        }
+        
+        // NEW: Premium Alert
+        .alert("Premium Feature", isPresented: $showPremiumAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Tracking progress photos is a premium feature.")
         }
         
         // --- 5. Full Screen Viewer ---

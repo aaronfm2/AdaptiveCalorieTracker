@@ -26,6 +26,8 @@ struct SettingsView: View {
     @State private var showingResetAlert = false
     @State private var showingRestartAlert = false
     
+    @State private var showPremiumAlert = false // NEW: Premium Alert State
+    
     // Helper accessors for Profile
     var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     
@@ -162,18 +164,28 @@ struct SettingsView: View {
                     }
                 }
                 
-                // MARK: - Section 4: Data Management
+                // MARK: - Section 4: Data Management (PREMIUM LOCKED)
                 Section {
-                    Button(action: exportData) {
-                        if isExporting {
-                            HStack {
+                    Button(action: {
+                        if profile.isPremium {
+                            exportData()
+                        } else {
+                            showPremiumAlert = true
+                        }
+                    }) {
+                        HStack {
+                            if isExporting {
                                 Text("Generating CSV...")
                                 Spacer()
                                 ProgressView()
+                            } else {
+                                Label("Export Data to CSV", systemImage: "square.and.arrow.up")
+                                    .foregroundColor(profile.isPremium ? .primary : .secondary)
+                                if !profile.isPremium {
+                                    Spacer()
+                                    Image(systemName: "lock.fill").foregroundColor(.orange)
+                                }
                             }
-                        } else {
-                            Label("Export Data to CSV", systemImage: "square.and.arrow.up")
-                                .foregroundColor(.primary)
                         }
                     }
                     .disabled(isExporting)
@@ -200,6 +212,9 @@ struct SettingsView: View {
                 
                 // MARK: - Section 6: Debug / Development
                 Section(header: Text("Debug")) {
+                    Toggle("Premium Status (Dev)", isOn: $profile.isPremium)
+                        .tint(.orange)
+                    
                     Toggle("Tutorial Completed", isOn: $hasSeenAppTutorial)
                         .tint(.blue) // Blue Toggle
                     
@@ -238,6 +253,11 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .alert("Premium Feature", isPresented: $showPremiumAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Exporting data to CSV is a premium feature.")
             }
             .sheet(isPresented: $showingReconfigureGoal) {
                 GoalConfigurationView(

@@ -5,6 +5,9 @@ import SwiftData
 final class UserProfile {
     var createdAt: Date = Date()
     
+    // MARK: - Premium Status
+    var isPremium: Bool = false // Feature Flag for Premium Features
+    
     // MARK: - Core Profile
     var unitSystem: String = UnitSystem.metric.rawValue
     var gender: String = Gender.male.rawValue
@@ -33,11 +36,28 @@ final class UserProfile {
     
     // MARK: - Workout Preferences (NEW)
     var trackedMuscles: String = "Chest,Back,Legs,Shoulders,Abs,Cardio,Biceps,Triceps"
-    // NEW: Persistent storage for user-defined muscles so they aren't lost when untracked
+    // Persistent storage for user-defined muscles so they aren't lost when untracked
     var customMuscles: String = ""
     var weeklyWorkoutGoal: Int = 3 // Default to 3 workouts per week
     
     init() {
         self.createdAt = Date()
+    }
+    
+    // MARK: - Helper Methods
+    
+    /// Adds a new custom muscle to the persistent list if it doesn't already exist.
+    func addCustomMuscle(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
+        // Split current string into array, filter out empties
+        var current = customMuscles.components(separatedBy: ",").filter { !$0.isEmpty }
+        
+        // Case-insensitive check to prevent duplicates like "Calves" and "calves"
+        if !current.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            current.append(trimmed)
+            customMuscles = current.joined(separator: ",")
+        }
     }
 }

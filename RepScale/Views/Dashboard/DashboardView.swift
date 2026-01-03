@@ -27,6 +27,7 @@ struct DashboardView: View {
     @State private var showingMaintenanceInfo = false
     @State private var showingReconfigureGoal = false
     @State private var showingGoalEdit = false
+    @State private var showingPremiumAlert = false // NEW: Alert state for locked features
 
     var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     
@@ -91,6 +92,15 @@ struct DashboardView: View {
             } message: {
                 Text("This is based on your weight change and your calories consumed over the last 30 days. Please note this number should only be used as a guide.")
             }
+            // NEW: Premium Upgrade Alert
+            .alert("Premium Feature", isPresented: $showingPremiumAlert) {
+                Button("Upgrade", role: .none) {
+                    // Action to open paywall would go here
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Upgrade to RepScale Premium to unlock advanced analytics like Projections, Strength Tracking, Volume, and Nutrition History.")
+            }
             .onAppear(perform: setupOnAppear)
             .onChange(of: logs) { _, _ in refreshViewModel() }
             .onChange(of: weights) { _, _ in refreshViewModel() }
@@ -107,68 +117,113 @@ struct DashboardView: View {
 
     @ViewBuilder
     private func cardView(for type: DashboardCardType, index: Int, totalCount: Int) -> some View {
-        switch type {
-        // Weight Cards
-        case .projection:
-            ProjectionComparisonCard(
-                profile: profile, viewModel: viewModel, weights: weights,
-                index: index, totalCount: totalCount,
-                onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+        // MARK: - Premium Lock Check
+        if isPremiumFeature(type) && !profile.isPremium {
+            LockedCardView(
+                title: typeTitle(type),
+                icon: iconFor(type),
+                index: index,
+                totalCount: totalCount,
+                onMoveUp: { moveCardUp(index) },
+                onMoveDown: { moveCardDown(index) },
+                onTap: { showingPremiumAlert = true }
             )
-        case .weightChange:
-            WeightChangeCard(
-                profile: profile, viewModel: viewModel,
-                index: index, totalCount: totalCount,
-                onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
-            )
-        case .weightTrend:
-            WeightTrendCard(
-                profile: profile, weights: weights,
-                index: index, totalCount: totalCount,
-                onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
-            )
-            
-        // Workout Cards
-        case .workoutDistribution:
-            WorkoutDistributionCard(
-                profile: profile, workouts: workouts,
-                index: index, totalCount: totalCount,
-                onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
-            )
-        case .weeklyWorkoutGoal:
-            WeeklyGoalCard(
-                profile: profile, viewModel: viewModel,
-                index: index, totalCount: totalCount,
-                onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
-            )
-        case .strengthTracker:
-            StrengthTrackerCard(
-                profile: profile, workouts: workouts,
-                index: index, totalCount: totalCount,
-                onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
-            )
-        case .volumeTracker:
-                VolumeTrackerCard(
+        } else {
+            // Render actual card if free or unlocked
+            switch type {
+            // Weight Cards
+            case .projection:
+                ProjectionComparisonCard(
+                    profile: profile, viewModel: viewModel, weights: weights,
+                    index: index, totalCount: totalCount,
+                    onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+                )
+            case .weightChange:
+                WeightChangeCard(
+                    profile: profile, viewModel: viewModel,
+                    index: index, totalCount: totalCount,
+                    onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+                )
+            case .weightTrend:
+                WeightTrendCard(
+                    profile: profile, weights: weights,
+                    index: index, totalCount: totalCount,
+                    onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+                )
+                
+            // Workout Cards
+            case .workoutDistribution:
+                WorkoutDistributionCard(
                     profile: profile, workouts: workouts,
                     index: index, totalCount: totalCount,
                     onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
                 )
-        // Nutrition Cards
-        case .nutrition:
-            NutritionHistoryCard(
-                profile: profile,
-                index: index, totalCount: totalCount,
-                onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
-            )
-        case .macroDistribution:
-                MacrosDistributionCard(
+            case .weeklyWorkoutGoal:
+                WeeklyGoalCard(
+                    profile: profile, viewModel: viewModel,
+                    index: index, totalCount: totalCount,
+                    onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+                )
+            case .strengthTracker:
+                StrengthTrackerCard(
+                    profile: profile, workouts: workouts,
+                    index: index, totalCount: totalCount,
+                    onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+                )
+            case .volumeTracker:
+                    VolumeTrackerCard(
+                        profile: profile, workouts: workouts,
+                        index: index, totalCount: totalCount,
+                        onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+                    )
+            // Nutrition Cards
+            case .nutrition:
+                NutritionHistoryCard(
                     profile: profile,
                     index: index, totalCount: totalCount,
                     onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
                 )
+            case .macroDistribution:
+                    MacrosDistributionCard(
+                        profile: profile,
+                        index: index, totalCount: totalCount,
+                        onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+                    )
+            }
         }
     }
     
+    // MARK: - Premium Helpers
+    private func isPremiumFeature(_ type: DashboardCardType) -> Bool {
+        switch type {
+        case .projection, .strengthTracker, .volumeTracker, .nutrition:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    private func typeTitle(_ type: DashboardCardType) -> String {
+        switch type {
+        case .projection: return "Projections"
+        case .strengthTracker: return "Strength Tracker"
+        case .volumeTracker: return "Volume Tracker"
+        case .nutrition: return "Nutrition History"
+        default: return type.rawValue
+        }
+    }
+    
+    private func iconFor(_ type: DashboardCardType) -> String {
+        switch type {
+        case .projection: return "chart.xyaxis.line"
+        case .strengthTracker: return "dumbbell.fill"
+        case .volumeTracker: return "chart.bar.fill"
+        case .nutrition: return "fork.knife"
+        default: return "circle"
+        }
+    }
+    
+    // MARK: - Layout Helpers
     private func moveCardUp(_ index: Int) {
         guard index > 0 else { return }
         withAnimation { layout.swapAt(index, index - 1) }
@@ -341,6 +396,57 @@ struct DashboardView: View {
         if profile.goalType == GoalType.cutting.rawValue { return current <= profile.targetWeight }
         else if profile.goalType == GoalType.bulking.rawValue { return current >= profile.targetWeight }
         else { return abs(current - profile.targetWeight) <= profile.maintenanceTolerance }
+    }
+}
+
+// MARK: - Locked Card View (New)
+struct LockedCardView: View {
+    let title: String
+    let icon: String
+    let index: Int
+    let totalCount: Int
+    var onMoveUp: () -> Void
+    var onMoveDown: () -> Void
+    var onTap: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title).font(.headline).foregroundColor(.secondary)
+                Spacer()
+                Image(systemName: "lock.fill").foregroundColor(.orange)
+                ReorderArrows(index: index, totalCount: totalCount, onUp: onMoveUp, onDown: onMoveDown)
+            }
+            
+            Button(action: onTap) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.05))
+                        .frame(height: 150)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(style: StrokeStyle(lineWidth: 1, dash: [5]))
+                                .foregroundColor(.secondary.opacity(0.2))
+                        )
+                    
+                    VStack(spacing: 8) {
+                        Image(systemName: icon)
+                            .font(.system(size: 40))
+                            .foregroundColor(.secondary.opacity(0.3))
+                        Text("Premium Feature")
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                            .foregroundColor(.primary)
+                        Text("Tap to Upgrade")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
     }
 }
 

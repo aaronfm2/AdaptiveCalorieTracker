@@ -12,6 +12,7 @@ struct AddWorkoutView: View {
     let workoutToEdit: Workout?
     
     @State private var viewModel: AddWorkoutViewModel
+    @State private var showPremiumAlert = false // NEW: Premium Alert State
     
     init(workoutToEdit: Workout?, profile: UserProfile) {
         self.workoutToEdit = workoutToEdit
@@ -46,21 +47,37 @@ struct AddWorkoutView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
                         Menu {
+                            // PREMIUM LOCK: Load Template
                             Button {
-                                viewModel.showLoadTemplateSheet = true
+                                if profile.isPremium {
+                                    viewModel.showLoadTemplateSheet = true
+                                } else {
+                                    showPremiumAlert = true
+                                }
                             } label: {
                                 Label("Load Template", systemImage: "arrow.down.doc")
                             }
                             
+                            // PREMIUM LOCK: Save Template
                             Button {
-                                viewModel.newTemplateName = ""
-                                viewModel.showSaveTemplateAlert = true
+                                if profile.isPremium {
+                                    viewModel.newTemplateName = ""
+                                    viewModel.showSaveTemplateAlert = true
+                                } else {
+                                    showPremiumAlert = true
+                                }
                             } label: {
                                 Label("Save as Template", systemImage: "arrow.up.doc")
                             }
                             .disabled(viewModel.exercises.isEmpty)
                         } label: {
                             Image(systemName: "doc.text")
+                            // Visual indicator for lock if not premium
+                            if !profile.isPremium {
+                                Image(systemName: "lock.fill")
+                                    .font(.caption2)
+                                    .offset(x: -2, y: -2)
+                            }
                         }
 
                         Button("Save") {
@@ -78,6 +95,12 @@ struct AddWorkoutView: View {
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
                 }
+            }
+            // NEW: Premium Alert
+            .alert("Premium Feature", isPresented: $showPremiumAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Workout Templates are a premium feature. Upgrade to save time logging your workouts.")
             }
             .sheet(isPresented: $viewModel.showAddExerciseSheet) {
                 let muscleStrings = Set(viewModel.selectedMuscles)
@@ -583,9 +606,15 @@ struct LoadTemplateSheet: View {
 }
 
 // FIX: Update MuscleSelectionList to also see Forearms
+// UPDATED: Added Premium check for adding custom muscles
 struct MuscleSelectionList: View {
     @Binding var selectedMuscles: Set<String>
     var profile: UserProfile
+    
+    // Local state for adding muscles
+    @State private var showingAddMuscle = false
+    @State private var newMuscleName = ""
+    @State private var showPremiumAlert = false
     
     var availableMuscles: [String] {
         let standard = Set(MuscleGroup.allCases.map { $0.rawValue })
@@ -626,5 +655,34 @@ struct MuscleSelectionList: View {
         }
         .navigationTitle("Muscles")
         .navigationBarTitleDisplayMode(.inline)
+        // PREMIUM LOCK: Add Custom Muscle
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    if profile.isPremium {
+                        newMuscleName = ""
+                        showingAddMuscle = true
+                    } else {
+                        showPremiumAlert = true
+                    }
+                }) {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .alert("Add Custom Muscle", isPresented: $showingAddMuscle) {
+            TextField("Muscle Name", text: $newMuscleName)
+            Button("Cancel", role: .cancel) { }
+            Button("Add") {
+                profile.addCustomMuscle(newMuscleName)
+            }
+        } message: {
+            Text("Enter the name of the muscle you want to track.")
+        }
+        .alert("Premium Feature", isPresented: $showPremiumAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Adding custom tracked muscles is a premium feature.")
+        }
     }
 }
