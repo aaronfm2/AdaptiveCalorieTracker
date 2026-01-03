@@ -169,7 +169,7 @@ struct WeightListContent: View {
                                         .foregroundColor(.primary)
                                 }
                                 // CHECK FOR PHOTOS: Added camera icon indicator
-                                if let photos = entry.photos, !photos.isEmpty {
+                                if entry.hasPhotos {
                                     Image(systemName: "camera.fill")
                                         .font(.caption2)
                                         .foregroundColor(.blue)

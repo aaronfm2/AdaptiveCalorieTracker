@@ -184,6 +184,11 @@ struct WeightEntryDetailView: View {
         if let data = processedData {
             let newPhoto = ProgressPhoto(imageData: data)
             newPhoto.weightEntry = entry
+            
+            // --- MEMORY OPTIMIZATION: Update Flag ---
+            // Mark that this entry now definitely has photos
+            entry.hasPhotos = true
+            
             modelContext.insert(newPhoto)
         }
     }
@@ -193,6 +198,10 @@ struct WeightEntryDetailView: View {
             entry.photos?.remove(at: index)
         }
         modelContext.delete(photo)
+        
+        // --- MEMORY OPTIMIZATION: Update Flag ---
+        // Check if any photos remain. If the array is empty or nil, flag becomes false.
+        entry.hasPhotos = !(entry.photos?.isEmpty ?? true)
     }
 } // End of WeightEntryDetailView
 

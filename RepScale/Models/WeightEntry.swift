@@ -7,7 +7,9 @@ final class WeightEntry {
     var weight: Double = 0.0
     var note: String = ""
     
-    // CloudKit requires relationships to be optional
+    // Add this property
+    var hasPhotos: Bool = false
+    
     @Relationship(deleteRule: .cascade, inverse: \ProgressPhoto.weightEntry)
     var photos: [ProgressPhoto]? = []
     
@@ -15,6 +17,7 @@ final class WeightEntry {
         self.date = date
         self.weight = weight
         self.note = note
+        // hasPhotos defaults to false
     }
 }
 
