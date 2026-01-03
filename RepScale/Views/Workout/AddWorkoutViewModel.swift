@@ -6,12 +6,13 @@ import SwiftUI
 class AddWorkoutViewModel {
     // MARK: - Properties
     
-    // Form Data
     var date: Date = Date()
     
     var category: String = "Push" {
         didSet {
-            updateMusclesForCategory()
+            if exercises.isEmpty {
+                updateMusclesForCategory()
+            }
         }
     }
     
@@ -33,7 +34,6 @@ class AddWorkoutViewModel {
         MuscleGroup.allCases
     }
     
-    // Helper Struct for UI
     struct ExerciseGroup {
         let name: String
         var exercises: [ExerciseEntry]
@@ -46,8 +46,21 @@ class AddWorkoutViewModel {
             self.category = workout.category
             self.selectedMuscles = Set(workout.muscleGroups)
             self.note = workout.note
-            // FIX: Unwrap optional exercises
-            self.exercises = workout.exercises ?? []
+            
+            // --- CRITICAL FIX HERE ---
+            // OLD CODE: self.exercises = workout.exercises ?? []
+            // NEW CODE: We map them to create *new* unmanaged objects.
+            self.exercises = (workout.exercises ?? []).map { ex in
+                ExerciseEntry(
+                    name: ex.name,
+                    reps: ex.reps,
+                    weight: ex.weight,
+                    duration: ex.duration,
+                    distance: ex.distance,
+                    isCardio: ex.isCardio,
+                    note: ex.note
+                )
+            }
         } else {
             updateMusclesForCategory()
         }
@@ -130,7 +143,6 @@ class AddWorkoutViewModel {
         category = template.category
         selectedMuscles = Set(template.muscleGroups)
         
-        // FIX: Unwrap optional template exercises
         let templateExercises = template.exercises ?? []
         
         let newExercises = templateExercises.map { tex in
@@ -169,20 +181,34 @@ class AddWorkoutViewModel {
         showSaveTemplateAlert = false
     }
     
-    func saveWorkout(context: ModelContext, originalWorkout: Workout?, onComplete: () -> Void) {
+    func saveWorkout(context: ModelContext, originalWorkout: Workout?, onComplete: (() -> Void)? = nil) -> Workout? {
+        
+        let workoutToSave: Workout
+        
         if let workout = originalWorkout {
             // Update Existing
-            workout.date = Calendar.current.startOfDay(for: date)
-            workout.category = category
-            workout.muscleGroups = Array(selectedMuscles)
-            workout.note = note
-            workout.exercises = exercises
+            workoutToSave = workout
+            workoutToSave.date = Calendar.current.startOfDay(for: date)
+            workoutToSave.category = category
+            workoutToSave.muscleGroups = Array(selectedMuscles)
+            workoutToSave.note = note
+            
+            // Replace exercises with current state
+            workoutToSave.exercises = exercises
+            
         } else {
             // Create New
-            let workout = Workout(date: date, category: category, muscleGroups: Array(selectedMuscles), note: note)
-            workout.exercises = exercises
-            context.insert(workout)
+            workoutToSave = Workout(date: date, category: category, muscleGroups: Array(selectedMuscles), note: note)
+            workoutToSave.exercises = exercises
+            context.insert(workoutToSave)
         }
-        onComplete()
+        
+        // Save to disk
+        try? context.save()
+        
+        // Call completion if provided (e.g., for the "Done" button)
+        onComplete?()
+        
+        return workoutToSave
     }
 }

@@ -6,6 +6,9 @@ struct AddWorkoutView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
+    // 1. Detect Backgrounding for Autosave
+    @Environment(\.scenePhase) var scenePhase
+    
     @Query(sort: \WorkoutTemplate.name) private var templates: [WorkoutTemplate]
     
     var profile: UserProfile
@@ -13,10 +16,21 @@ struct AddWorkoutView: View {
     
     @State private var viewModel: AddWorkoutViewModel
     
+    // 2. State to track the live workout for autosaves
+    @State private var activeWorkout: Workout?
+    
+    // 3. Debounce Trigger State
+    @State private var inputChangeTrigger: Int = 0
+    
     init(workoutToEdit: Workout?, profile: UserProfile) {
         self.workoutToEdit = workoutToEdit
         self.profile = profile
+        
+        // Initialize View Model
         _viewModel = State(initialValue: AddWorkoutViewModel(workoutToEdit: workoutToEdit))
+        
+        // Initialize local state for autosave tracking
+        _activeWorkout = State(initialValue: workoutToEdit)
     }
     
     var body: some View {
@@ -28,8 +42,7 @@ struct AddWorkoutView: View {
                 RestTimerSection()
                 notesSection
                 
-                // --- FIX: Bottom Spacer for Keyboard ---
-                // Allows scrolling content above the keyboard since we ignore safe area
+                // Bottom Spacer for Keyboard
                 Section {
                     Color.clear.frame(height: 400)
                 }
@@ -63,8 +76,10 @@ struct AddWorkoutView: View {
                             Image(systemName: "doc.text")
                         }
 
-                        Button("Save") {
-                            viewModel.saveWorkout(context: modelContext, originalWorkout: workoutToEdit) {
+                        // Manual Save Button (Finalizes)
+                        Button("Done") {
+                            // We ignore the return value here as we are dismissing
+                            _ = viewModel.saveWorkout(context: modelContext, originalWorkout: activeWorkout) {
                                 dismiss()
                             }
                         }
@@ -82,10 +97,15 @@ struct AddWorkoutView: View {
             .sheet(isPresented: $viewModel.showAddExerciseSheet) {
                 let muscleStrings = Set(viewModel.selectedMuscles)
                 AddExerciseSheet(exercises: $viewModel.exercises, workoutMuscles: muscleStrings, profile: profile)
+                    .onDisappear {
+                        // Autosave when returning from adding an exercise
+                        performAutosave()
+                    }
             }
             .sheet(isPresented: $viewModel.showLoadTemplateSheet) {
                 LoadTemplateSheet(templates: templates) { selectedTemplate in
                     viewModel.loadTemplate(selectedTemplate)
+                    performAutosave() // Save immediately after loading template
                 }
             }
             .alert("Save Template", isPresented: $viewModel.showSaveTemplateAlert) {
@@ -94,6 +114,46 @@ struct AddWorkoutView: View {
                 Button("Save") { viewModel.saveAsTemplate(context: modelContext) }
             } message: {
                 Text("Save the current exercises and settings as a template?")
+            }
+            
+            // MARK: - AUTOSAVE TRIGGERS
+            
+            // 4. Save when app goes to background (Critical for data safety)
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .background || newPhase == .inactive {
+                    performAutosave()
+                }
+            }
+            
+            // 5. DEBOUNCED AUTOSAVE TASK
+            // This waits for 'inputChangeTrigger' to stop changing for 2 seconds before saving.
+            .task(id: inputChangeTrigger) {
+                // Don't autosave on the very first load (0)
+                guard inputChangeTrigger > 0 else { return }
+                
+                do {
+                    // Wait 2 seconds. If inputChangeTrigger changes again during this time,
+                    // SwiftUI cancels this task and starts a new one.
+                    try await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+                    performAutosave()
+                } catch {
+                    // Task was cancelled because user kept typing; do nothing.
+                }
+            }
+        }
+    }
+    
+    // MARK: - Autosave Logic
+    private func performAutosave() {
+        guard !viewModel.exercises.isEmpty else { return }
+        
+        // Save using ViewModel
+        if let saved = viewModel.saveWorkout(context: modelContext, originalWorkout: activeWorkout) {
+            
+            // Only update the local binding if we didn't have one before.
+            // This prevents the View from redrawing (and closing keyboard) if the ID hasn't changed.
+            if activeWorkout == nil {
+                self.activeWorkout = saved
             }
         }
     }
@@ -146,21 +206,32 @@ extension AddWorkoutView {
                 ForEach(viewModel.groupedExercises, id: \.name) { group in
                     Section {
                         ForEach(Array(group.exercises.enumerated()), id: \.element) { index, ex in
-                            EditExerciseRow(exercise: ex, index: index, unitSystem: profile.unitSystem)
-                                .swipeActions(edge: .leading) {
-                                    Button {
-                                        viewModel.duplicateExercise(ex)
-                                    } label: {
-                                        Label("Copy", systemImage: "plus.square.on.square")
-                                    }
-                                    .tint(.blue)
+                            EditExerciseRow(
+                                exercise: ex,
+                                index: index,
+                                unitSystem: profile.unitSystem,
+                                // Pass the debounce trigger closure here
+                                onInputChanged: { inputChangeTrigger += 1 }
+                            )
+                            .swipeActions(edge: .leading) {
+                                Button {
+                                    viewModel.duplicateExercise(ex)
+                                    performAutosave() // Save on duplicate
+                                } label: {
+                                    Label("Copy", systemImage: "plus.square.on.square")
                                 }
+                                .tint(.blue)
+                            }
                         }
                         .onDelete { indexSet in
                             viewModel.deleteFromGroup(group: group, at: indexSet)
+                            performAutosave() // Save on delete
                         }
                         
-                        Button(action: { viewModel.addSet(to: group.name) }) {
+                        Button(action: {
+                            viewModel.addSet(to: group.name)
+                            performAutosave() // Save on add set
+                        }) {
                             Label("Add Set", systemImage: "plus")
                                 .font(.subheadline)
                         }
@@ -191,6 +262,9 @@ extension AddWorkoutView {
     private var notesSection: some View {
         Section("Notes") {
             TextField("Workout notes...", text: $viewModel.note)
+                .onChange(of: viewModel.note) {
+                    inputChangeTrigger += 1
+                }
         }
     }
 }
@@ -283,6 +357,8 @@ struct EditExerciseRow: View {
     @Bindable var exercise: ExerciseEntry
     let index: Int
     let unitSystem: String
+    // Added callback for debounce
+    var onInputChanged: () -> Void
     
     var weightLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     var distLabel: String { unitSystem == UnitSystem.imperial.rawValue ? "mi" : "km" }
@@ -305,25 +381,55 @@ struct EditExerciseRow: View {
                 
                 if exercise.isCardio {
                     HStack {
-                        TextField("Dist", value: distBinding, format: .number).keyboardType(.decimalPad).frame(width: 60)
+                        TextField("Dist", value: distBinding, format: .number)
+                            .keyboardType(.decimalPad)
+                            .frame(width: 60)
+                            .onChange(of: exercise.distance) { onInputChanged() }
+                        
                         Text(distLabel)
                         Spacer()
-                        TextField("Time", value: $exercise.duration, format: .number).keyboardType(.numberPad).frame(width: 60)
+                        
+                        TextField("Time", value: $exercise.duration, format: .number)
+                            .keyboardType(.numberPad)
+                            .frame(width: 60)
+                            .onChange(of: exercise.duration) { onInputChanged() }
+                        
                         Text("min")
                     }.foregroundColor(.blue)
                 } else {
                     HStack {
-                        TextField("Reps", value: $exercise.reps, format: .number).keyboardType(.numberPad).frame(width: 40).multilineTextAlignment(.trailing).padding(4).background(Color.gray.opacity(0.1)).cornerRadius(5)
+                        TextField("Reps", value: $exercise.reps, format: .number)
+                            .keyboardType(.numberPad)
+                            .frame(width: 40)
+                            .multilineTextAlignment(.trailing)
+                            .padding(4)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(5)
+                            .onChange(of: exercise.reps) { onInputChanged() }
+                        
                         Text("reps").font(.caption).foregroundColor(.secondary)
                         Spacer()
                         Text("x").foregroundColor(.secondary)
                         Spacer()
-                        TextField("Weight", value: weightBinding, format: .number).keyboardType(.decimalPad).frame(width: 60).multilineTextAlignment(.trailing).padding(4).background(Color.gray.opacity(0.1)).cornerRadius(5)
+                        
+                        TextField("Weight", value: weightBinding, format: .number)
+                            .keyboardType(.decimalPad)
+                            .frame(width: 60)
+                            .multilineTextAlignment(.trailing)
+                            .padding(4)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(5)
+                            .onChange(of: exercise.weight) { onInputChanged() }
+                        
                         Text(weightLabel).font(.caption).foregroundColor(.secondary)
                     }
                 }
             }
-            TextField("Add note...", text: $exercise.note).font(.caption).foregroundColor(.secondary).padding(.leading, 60)
+            TextField("Add note...", text: $exercise.note)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.leading, 60)
+                .onChange(of: exercise.note) { onInputChanged() }
         }
         .padding(.vertical, 2)
     }
@@ -456,7 +562,6 @@ struct CustomExerciseForm: View {
     @State private var saveToLibrary = false
     @State private var selectedMuscles: Set<String> = []
     
-    // FIX: Combine all sources of muscles to ensure Forearms shows up
     var availableMuscles: [String] {
         let standard = Set(MuscleGroup.allCases.map { $0.rawValue })
         let custom = Set(profile.customMuscles.components(separatedBy: ","))
@@ -582,7 +687,6 @@ struct LoadTemplateSheet: View {
     }
 }
 
-// FIX: Update MuscleSelectionList to also see Forearms
 struct MuscleSelectionList: View {
     @Binding var selectedMuscles: Set<String>
     var profile: UserProfile
@@ -621,7 +725,7 @@ struct MuscleSelectionList: View {
             } header: {
                 Text("Select Muscles")
             } footer: {
-                Text("These are auto-selected based on your Category, but you can customize them here if you did extra isolation work.")
+                Text("These are auto-selected based on your Category, but you can customize them here.")
             }
         }
         .navigationTitle("Muscles")
