@@ -147,6 +147,12 @@ struct DashboardView: View {
                 index: index, totalCount: totalCount,
                 onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
             )
+        case .volumeTracker:
+                VolumeTrackerCard(
+                    profile: profile, workouts: workouts,
+                    index: index, totalCount: totalCount,
+                    onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+                )
         }
     }
     
@@ -443,7 +449,7 @@ struct CustomizationSheet: View {
     private func isClassified(_ type: DashboardCardType) -> Bool {
         switch type {
         case .projection, .weightChange, .weightTrend,
-             .workoutDistribution, .weeklyWorkoutGoal, .strengthTracker:
+                .workoutDistribution, .weeklyWorkoutGoal, .strengthTracker, .volumeTracker:
             return true
         }
     }
@@ -456,6 +462,7 @@ struct CustomizationSheet: View {
         case .workoutDistribution: return "chart.pie.fill"
         case .weeklyWorkoutGoal: return "target"
         case .strengthTracker: return "dumbbell.fill"
+        case .volumeTracker: return "chart.bar.fill"
         }
     }
 }

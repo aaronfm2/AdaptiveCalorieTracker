@@ -91,6 +91,7 @@ enum DashboardCardType: String, CaseIterable, Codable, Identifiable {
     case workoutDistribution = "Workout Focus"
     case weeklyWorkoutGoal = "Weekly Goal"
     case strengthTracker = "Strength Tracker"
+    case volumeTracker = "Volume Tracker"
     
     var id: String { rawValue }
 }

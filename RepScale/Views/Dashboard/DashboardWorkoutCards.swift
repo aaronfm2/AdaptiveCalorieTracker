@@ -363,3 +363,220 @@ struct WeeklyGoalEditSheet: View {
         .presentationDetents([.height(200)])
     }
 }
+// MARK: - Volume Tracker Card
+struct VolumeTrackerCard: View {
+    @Bindable var profile: UserProfile
+    var workouts: [Workout]
+    var index: Int
+    var totalCount: Int
+    var onMoveUp: () -> Void
+    var onMoveDown: () -> Void
+    
+    // Local state for filters (Could be moved to UserProfile for persistence)
+    @State private var timeRange: TimeRange = .allTime
+    @State private var filterType: FilterType = .workout
+    @State private var selectedCategory: WorkoutCategories = .push
+    @State private var selectedExercise: String = ""
+    @State private var metric: VolumeMetric = .totalReps
+    
+    enum FilterType: String, CaseIterable {
+        case workout = "Workout"
+        case exercise = "Exercise"
+    }
+    
+    enum VolumeMetric: String, CaseIterable {
+        case volumeLoad = "Volume Load" // Weight * Reps
+        case totalReps = "Total Reps"
+        case totalSets = "Total Sets"
+    }
+    
+    var body: some View {
+        let allExercises = Array(Set(workouts.flatMap { $0.exercises ?? [] }.map { $0.name })).sorted()
+        
+        // Ensure valid exercise selection
+        let currentExercise = selectedExercise.isEmpty ? (allExercises.first ?? "None") : selectedExercise
+        
+        // 1. Filter Workouts by Time
+        let filteredWorkouts: [Workout]
+        if let startDate = timeRange.startDate(from: Date()) {
+            filteredWorkouts = workouts.filter { $0.date >= startDate }
+        } else {
+            filteredWorkouts = workouts
+        }
+        
+        // 2. Prepare Data Points
+        var graphData: [(date: Date, value: Double)] = []
+        let groupedByDate = Dictionary(grouping: filteredWorkouts, by: { Calendar.current.startOfDay(for: $0.date) })
+        
+        for (date, dayWorkouts) in groupedByDate {
+            var dailyTotal: Double = 0
+            
+            for workout in dayWorkouts {
+                // Filter Logic
+                var relevantExercises: [ExerciseEntry] = []
+                
+                if filterType == .workout {
+                    // Match Workout Category
+                    if workout.category == selectedCategory.rawValue {
+                        relevantExercises = workout.exercises ?? []
+                    }
+                } else {
+                    // Match Specific Exercise
+                    relevantExercises = (workout.exercises ?? []).filter { $0.name == currentExercise }
+                }
+                
+                // Metric Logic
+                for entry in relevantExercises {
+                    switch metric {
+                    case .volumeLoad:
+                        let weight = (entry.weight ?? 0).toUserWeight(system: profile.unitSystem)
+                        let reps = Double(entry.reps ?? 0)
+                        dailyTotal += (weight * reps)
+                    case .totalReps:
+                        dailyTotal += Double(entry.reps ?? 0)
+                    case .totalSets:
+                        dailyTotal += 1
+                    }
+                }
+            }
+            
+            if dailyTotal > 0 {
+                graphData.append((date: date, value: dailyTotal))
+            }
+        }
+        
+        graphData.sort { $0.date < $1.date }
+        
+        return VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                Text("Volume Tracker").font(.headline)
+                Spacer()
+                ReorderArrows(index: index, totalCount: totalCount, onUp: onMoveUp, onDown: onMoveDown)
+            }
+            
+            // Filters Row
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // Metric Selector
+                    Menu {
+                        ForEach(VolumeMetric.allCases, id: \.self) { m in
+                            Button(m.rawValue) { metric = m }
+                        }
+                    } label: {
+                        Label(metric.rawValue, systemImage: "chart.bar.fill")
+                            .font(.caption).fontWeight(.medium)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Color.purple.opacity(0.1), in: Capsule())
+                            .foregroundColor(.purple)
+                    }
+                    
+                    // Filter Type Selector
+                    Menu {
+                        ForEach(FilterType.allCases, id: \.self) { type in
+                            Button("By \(type.rawValue)") { filterType = type }
+                        }
+                    } label: {
+                        Text(filterType.rawValue)
+                            .font(.caption).fontWeight(.medium)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Color.gray.opacity(0.1), in: Capsule())
+                            .foregroundColor(.primary)
+                    }
+                    
+                    // Context Specific Selector (Category or Exercise)
+                    if filterType == .workout {
+                        Menu {
+                            ForEach(WorkoutCategories.allCases, id: \.self) { cat in
+                                Button(cat.rawValue) { selectedCategory = cat }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(selectedCategory.rawValue)
+                                Image(systemName: "chevron.down")
+                            }
+                            .font(.caption).fontWeight(.medium)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Color.blue.opacity(0.1), in: Capsule())
+                            .foregroundColor(.blue)
+                        }
+                    } else {
+                        Menu {
+                            if allExercises.isEmpty {
+                                Text("No Exercises")
+                            } else {
+                                ForEach(allExercises, id: \.self) { name in
+                                    Button(name) { selectedExercise = name }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(currentExercise)
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.down")
+                            }
+                            .font(.caption).fontWeight(.medium)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Color.blue.opacity(0.1), in: Capsule())
+                            .foregroundColor(.blue)
+                        }
+                    }
+                    
+                    // Time Range
+                    Menu {
+                        ForEach(TimeRange.allCases) { range in
+                            Button(range.rawValue) { timeRange = range }
+                        }
+                    } label: {
+                        Text(timeRange.rawValue)
+                            .font(.caption).fontWeight(.medium)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Color.orange.opacity(0.1), in: Capsule())
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+            
+            // Chart
+            if graphData.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary.opacity(0.3))
+                    Text("No volume data found")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 180)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(12)
+            } else {
+                Chart {
+                    ForEach(graphData, id: \.date) { item in
+                        BarMark(
+                            x: .value("Date", item.date, unit: .day),
+                            y: .value("Volume", item.value)
+                        )
+                        .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .bottom, endPoint: .top))
+                    }
+                }
+                .frame(height: 200)
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 5)) { _ in
+                        AxisGridLine()
+                        AxisTick()
+                        AxisValueLabel(format: .dateTime.month().day())
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
+        .onAppear {
+            if selectedExercise.isEmpty, let first = allExercises.first {
+                selectedExercise = first
+            }
+        }
+    }
+}
