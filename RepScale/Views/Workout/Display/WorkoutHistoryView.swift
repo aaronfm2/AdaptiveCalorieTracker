@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct WorkoutHistoryView: View {
+    @Environment(\.modelContext) private var modelContext
     @Bindable var profile: UserProfile
     @Query(sort: \Workout.date, order: .reverse) private var workouts: [Workout]
     
@@ -219,6 +220,7 @@ struct WorkoutHistoryView: View {
                                 WorkoutHistoryRow(workout: workout)
                             }
                         }
+                        .onDelete(perform: deleteWorkout)
                     }
                 }
             }
@@ -233,6 +235,15 @@ struct WorkoutHistoryView: View {
     @ViewBuilder
     func destinationFor(_ workout: Workout) -> some View {
         WorkoutDetailView(workout: workout, profile: profile)
+    }
+    
+    private func deleteWorkout(at offsets: IndexSet) {
+        withAnimation {
+            for index in offsets {
+                let workoutToDelete = filteredWorkouts[index]
+                modelContext.delete(workoutToDelete)
+            }
+        }
     }
 }
 
