@@ -153,6 +153,13 @@ struct DashboardView: View {
                     index: index, totalCount: totalCount,
                     onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
                 )
+        // Nutrition Cards
+        case .nutrition:
+            NutritionHistoryCard(
+                profile: profile,
+                index: index, totalCount: totalCount,
+                onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+            )
         }
     }
     
@@ -360,19 +367,7 @@ struct CustomizationSheet: View {
                 
                 // MARK: - Nutrition Section
                 Section {
-                    HStack {
-                        Image(systemName: "fork.knife")
-                            .frame(width: 24)
-                        Text("Nutrition Cards")
-                        Spacer()
-                        Text("Coming Soon")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.gray.opacity(0.1), in: Capsule())
-                    }
-                    .foregroundStyle(.secondary)
+                    toggleFor(.nutrition)
                 } header: {
                     Label("Nutrition", systemImage: "leaf")
                 }
@@ -432,7 +427,7 @@ struct CustomizationSheet: View {
                             .fontWeight(.medium)
                     }
                 }
-                .tint(.blue) // <--- Changed toggles to Blue
+                .tint(.blue)
             )
         } else {
             return AnyView(EmptyView())
@@ -449,7 +444,7 @@ struct CustomizationSheet: View {
     private func isClassified(_ type: DashboardCardType) -> Bool {
         switch type {
         case .projection, .weightChange, .weightTrend,
-                .workoutDistribution, .weeklyWorkoutGoal, .strengthTracker, .volumeTracker:
+                .workoutDistribution, .weeklyWorkoutGoal, .strengthTracker, .volumeTracker, .nutrition:
             return true
         }
     }
@@ -463,6 +458,7 @@ struct CustomizationSheet: View {
         case .weeklyWorkoutGoal: return "target"
         case .strengthTracker: return "dumbbell.fill"
         case .volumeTracker: return "chart.bar.fill"
+        case .nutrition: return "fork.knife"
         }
     }
 }
