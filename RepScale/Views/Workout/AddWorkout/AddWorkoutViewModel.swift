@@ -183,6 +183,24 @@ class AddWorkoutViewModel {
     
     func saveWorkout(context: ModelContext, originalWorkout: Workout?, onComplete: (() -> Void)? = nil) -> Workout? {
         
+        // FIX: Filter out empty exercises to prevent saving workouts with no actual data.
+        // Strength: Requires > 0 reps. Cardio: Requires > 0 distance or duration.
+        let validExercises = exercises.filter { ex in
+            if ex.isCardio {
+                return (ex.distance ?? 0) > 0 || (ex.duration ?? 0) > 0
+            } else {
+                return (ex.reps ?? 0) > 0
+            }
+        }
+        
+        // If there are no valid exercises, do not save or create the workout.
+        guard !validExercises.isEmpty else {
+            // If the user tapped "Done" (onComplete provided), we still dismiss the view,
+            // but we don't persist the empty workout.
+            onComplete?()
+            return nil
+        }
+        
         let workoutToSave: Workout
         
         if let workout = originalWorkout {
@@ -194,12 +212,12 @@ class AddWorkoutViewModel {
             workoutToSave.note = note
             
             // Replace exercises with current state
-            workoutToSave.exercises = exercises
+            workoutToSave.exercises = validExercises
             
         } else {
             // Create New
             workoutToSave = Workout(date: date, category: category, muscleGroups: Array(selectedMuscles), note: note)
-            workoutToSave.exercises = exercises
+            workoutToSave.exercises = validExercises
             context.insert(workoutToSave)
         }
         
