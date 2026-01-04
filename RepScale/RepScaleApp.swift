@@ -38,3 +38,10 @@ struct RepScaleApp: App {
         .modelContainer(sharedModelContainer)
     }
 }
+
+// MARK: - Global Helper to Dismiss Keyboard
+extension UIApplication {
+    func endEditing() {
+        sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}

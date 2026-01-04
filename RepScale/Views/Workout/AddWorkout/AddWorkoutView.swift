@@ -33,6 +33,10 @@ struct AddWorkoutView: View {
         // Initialize local state for autosave tracking
         _activeWorkout = State(initialValue: workoutToEdit)
     }
+    // --- Added: Consistent Background Color Logic ---
+        var appBackgroundColor: Color {
+            profile.isDarkMode ? Color(red: 0.11, green: 0.11, blue: 0.12) : Color(uiColor: .systemGroupedBackground)
+        }
     
     var body: some View {
         NavigationStack {
@@ -95,11 +99,20 @@ struct AddWorkoutView: View {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") {
-                        isInputFocused = false
+                            // Use the global dismiss for consistency
+                            UIApplication.shared.endEditing()
+                        }
+                        .fontWeight(.bold)
                     }
-                    .fontWeight(.bold)
                 }
-            }
+            // --- Added: Tap Background to Dismiss ---
+                        .scrollContentBackground(.hidden)
+                        .background(
+                            appBackgroundColor
+                                .onTapGesture {
+                                    UIApplication.shared.endEditing()
+                                }
+                        )
             .sheet(isPresented: $viewModel.showAddExerciseSheet) {
                 let muscleStrings = Set(viewModel.selectedMuscles)
                 AddExerciseSheet(exercises: $viewModel.exercises, workoutMuscles: muscleStrings, profile: profile)

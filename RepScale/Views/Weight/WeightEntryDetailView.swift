@@ -89,7 +89,9 @@ struct WeightEntryDetailView: View {
         // --- FIX END ---
         // --- Added: Apply Background Color ---
         .scrollContentBackground(.hidden)
-        .background(appBackgroundColor)
+        .background(appBackgroundColor.onTapGesture {
+            UIApplication.shared.endEditing()
+        })
         // ------------------------------------
         .navigationTitle("Edit Log")
         
