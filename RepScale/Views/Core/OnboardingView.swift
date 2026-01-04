@@ -4,7 +4,6 @@ import SwiftData
 struct OnboardingView: View {
     @Environment(\.modelContext) private var modelContext
     
-    // --- APP STORAGE: Controls transition back to Main App ---
     @AppStorage("isOnboardingCompleted") private var isOnboardingCompleted: Bool = false
     
     // MARK: - Navigation State
@@ -16,14 +15,27 @@ struct OnboardingView: View {
     @State private var isDarkMode: Bool = true
     @State private var gender: Gender = .male
     
+    // Biometrics
     @State private var currentWeight: Double? = nil
+    
+    // Height Logic
+    @State private var heightUnit: UnitSystem = .metric // Independent toggle
+    @State private var currentHeight: Double? = nil // Master source (cm)
+    @State private var heightFt: Int? = nil // Temporary input
+    @State private var heightIn: Int? = nil // Temporary input
+    
+    // Age Logic
+    @State private var dateOfBirth: Date = Calendar.current.date(byAdding: .year, value: -25, to: Date())!
+    
+    @State private var activityLevel: ActivityLevel = .moderatelyActive
+    
     @State private var targetWeight: Double? = nil
     @State private var goalType: GoalType = .cutting
     
     // Strategy & Calorie Settings
     @State private var isCalorieCountingEnabled: Bool = true
     @State private var trackCaloriesBurned: Bool = false
-    @State private var maintenanceTolerance: Double = 2.0 // Stored in Kg
+    @State private var maintenanceTolerance: Double = 2.0
     
     // Calculation State
     @State private var knowsDetails: Bool = false
@@ -34,6 +46,10 @@ struct OnboardingView: View {
     // MARK: - Helpers
     private var dataManager: DataManager {
         DataManager(modelContext: modelContext)
+    }
+    
+    private var computedAge: Int {
+        Calendar.current.dateComponents([.year], from: dateOfBirth, to: Date()).year ?? 25
     }
 
     var unitLabel: String {
@@ -58,7 +74,6 @@ struct OnboardingView: View {
             appBackgroundColor.ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Top Progress Bar
                 if currentStep > 0 && currentStep < 4 {
                     ProgressView(value: Double(currentStep), total: 4)
                         .tint(.blue)
@@ -66,7 +81,6 @@ struct OnboardingView: View {
                         .padding(.top, 10)
                 }
                 
-                // Content Area
                 TabView(selection: $currentStep) {
                     welcomeStep.tag(0)
                     biometricsStep.tag(1)
@@ -77,7 +91,7 @@ struct OnboardingView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
                 
-                // Bottom Navigation Bar
+                // Bottom Navigation
                 if currentStep < 4 {
                     HStack {
                         if currentStep > 0 {
@@ -85,9 +99,7 @@ struct OnboardingView: View {
                                 hideKeyboard()
                                 withAnimation { currentStep -= 1 }
                             }) {
-                                Text("Back")
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.secondary)
+                                Text("Back").fontWeight(.medium).foregroundColor(.secondary)
                             }
                         } else {
                             Spacer()
@@ -98,7 +110,10 @@ struct OnboardingView: View {
                         Button(action: {
                             hideKeyboard()
                             withAnimation {
-                                if currentStep == 1 { estimateMaintenance() }
+                                if currentStep == 1 {
+                                    resolveHeight()
+                                    estimateMaintenance()
+                                }
                                 currentStep += 1
                             }
                         }) {
@@ -118,15 +133,12 @@ struct OnboardingView: View {
                     .padding()
                     .background(appBackgroundColor.opacity(0.9))
                 } else {
-                    // Final Step Button
                     Button(action: {
                         hideKeyboard()
                         completeOnboarding()
                     }) {
                         Text("Start Your Journey")
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
+                            .font(.headline).fontWeight(.bold).foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.blue)
@@ -138,24 +150,28 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(isDarkMode ? .dark : .light)
-        // FIXED: Removed .onTapGesture { hideKeyboard() } so DatePicker works
-        .ignoresSafeArea(.keyboard, edges: .bottom) // Keeps the ghost keyboard fix
-        // ADDED: Moves "Done" button to the keyboard toolbar
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Done") {
-                    hideKeyboard()
-                }
-                .fontWeight(.bold)
-                .foregroundColor(.blue)
+                Button("Done") { hideKeyboard() }.fontWeight(.bold).foregroundColor(.blue)
             }
         }
     }
     
     // MARK: - Validation
     var cannotMoveForward: Bool {
-        if currentStep == 1 { return currentWeight == nil }
+        if currentStep == 1 {
+            // Must have weight
+            if currentWeight == nil { return true }
+            // Must have height (either direct cm or ft/in depending on mode)
+            // Logic: if currentHeight is nil, we check if the user entered ft/in validly
+            if currentHeight == nil {
+                if heightUnit == .metric { return true }
+                if heightUnit == .imperial && (heightFt == nil || heightIn == nil) { return true }
+            }
+            return false
+        }
         if currentStep == 2 {
             if goalType == .maintenance { return false }
             guard let t = targetWeight, let c = currentWeight else { return true }
@@ -170,28 +186,15 @@ struct OnboardingView: View {
     var welcomeStep: some View {
         VStack(spacing: 30) {
             Spacer()
-            
             ZStack {
-                Circle()
-                    .fill(Color.blue.opacity(0.1))
-                    .frame(width: 200, height: 200)
+                Circle().fill(Color.blue.opacity(0.1)).frame(width: 200, height: 200)
                 Image(systemName: "figure.strengthtraining.traditional")
-                    .font(.system(size: 80))
-                    .foregroundColor(.blue)
+                    .font(.system(size: 80)).foregroundColor(.blue)
             }
-            
             VStack(spacing: 12) {
-                Text("Welcome to RepScale")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .multilineTextAlignment(.center)
-                
-                Text("Your personal companion for tracking weight,\nworkouts, and calories.")
-                    .font(.body)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
+                Text("Welcome to RepScale").font(.system(size: 32, weight: .bold, design: .rounded)).multilineTextAlignment(.center)
+                Text("Your personal companion for tracking weight,\nworkouts, and calories.").multilineTextAlignment(.center).foregroundColor(.secondary)
             }
-            .padding(.horizontal)
-            
             Spacer()
         }
     }
@@ -200,15 +203,21 @@ struct OnboardingView: View {
     var biometricsStep: some View {
         ScrollView {
             VStack(spacing: 24) {
-                headerText(title: "Tell us about yourself", subtitle: "We use this to estimate your baseline metabolism.")
+                headerText(title: "Tell us about yourself", subtitle: "We use this to calculate your maintenance calories.")
                 
                 // Units
                 HStack(spacing: 0) {
                     ForEach(UnitSystem.allCases, id: \.self) { system in
-                        Button(action: { withAnimation { unitSystem = system } }) {
+                        Button(action: {
+                            withAnimation {
+                                unitSystem = system
+                                // Sync height unit only if it hasn't been explicitly toggled?
+                                // Or just let them default together but change separately.
+                                // Let's keep height unit separate as requested.
+                            }
+                        }) {
                             Text(system.rawValue)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
+                                .font(.subheadline).fontWeight(.medium)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(unitSystem == system ? Color.blue : Color.clear)
@@ -224,21 +233,106 @@ struct OnboardingView: View {
                 
                 // Gender
                 HStack(spacing: 16) {
-                    selectionCard(title: "Male", icon: "figure.stand", isSelected: gender == .male) {
-                        gender = .male
+                    selectionCard(title: "Male", icon: "figure.stand", isSelected: gender == .male) { gender = .male }
+                    selectionCard(title: "Female", icon: "figure.stand.dress", isSelected: gender == .female) { gender = .female }
+                }
+                .padding(.horizontal)
+                
+                // Grid for Inputs
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                    
+                    // Age (Date of Birth)
+                    VStack(alignment: .leading) {
+                        Text("Date of Birth").font(.caption).foregroundColor(.secondary)
+                        DatePicker("", selection: $dateOfBirth, displayedComponents: .date)
+                            .labelsHidden()
+                            .datePickerStyle(.compact)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(12)
                     }
-                    selectionCard(title: "Female", icon: "figure.stand.dress", isSelected: gender == .female) {
-                        gender = .female
+                    
+                    // Height
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text("Height").font(.caption).foregroundColor(.secondary)
+                            Spacer()
+                            // Independent Toggle
+                            Picker("Height Unit", selection: $heightUnit) {
+                                Text("cm").tag(UnitSystem.metric)
+                                Text("ft/in").tag(UnitSystem.imperial)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 80)
+                            .scaleEffect(0.8)
+                            .onChange(of: heightUnit) { oldVal, newVal in
+                                // Drift Prevention: Only convert display values when entering the mode.
+                                if newVal == .imperial {
+                                    if let cm = currentHeight {
+                                        let totalInches = cm / 2.54
+                                        heightFt = Int(totalInches / 12)
+                                        heightIn = Int(totalInches.truncatingRemainder(dividingBy: 12))
+                                    }
+                                }
+                                // When switching back to metric, we DO NOT auto-update 'currentHeight' from ft/in
+                                // unless the user edited them. This keeps '180' as '180' even if 5'11" is slightly off.
+                            }
+                        }
+                        
+                        if heightUnit == .metric {
+                            HStack {
+                                TextField("cm", value: $currentHeight, format: .number)
+                                    .keyboardType(.numberPad)
+                                Text("cm").foregroundColor(.secondary)
+                            }
+                            .padding()
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(12)
+                            .focused($isInputFocused)
+                        } else {
+                            HStack {
+                                TextField("ft", value: $heightFt, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .onChange(of: heightFt) { _, _ in updateHeightFromImperial() }
+                                Text("'")
+                                TextField("in", value: $heightIn, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .onChange(of: heightIn) { _, _ in updateHeightFromImperial() }
+                                Text("\"")
+                            }
+                            .padding()
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(12)
+                            .focused($isInputFocused)
+                        }
                     }
+                }
+                .padding(.horizontal)
+                
+                // Activity Level
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Activity Level").font(.headline)
+                    Picker("Activity", selection: $activityLevel) {
+                        ForEach(ActivityLevel.allCases, id: \.self) { level in
+                            Text(level.rawValue).tag(level)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(12)
+                    
+                    Text(activityLevel.description)
+                        .font(.caption).foregroundColor(.secondary)
                 }
                 .padding(.horizontal)
                 
                 // Weight Input
                 VStack(spacing: 10) {
-                    Text("Current Weight")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    
+                    Text("Current Weight").font(.headline).foregroundColor(.secondary)
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
                         TextField("0", value: $currentWeight, format: .number)
                             .keyboardType(.decimalPad)
@@ -246,12 +340,7 @@ struct OnboardingView: View {
                             .multilineTextAlignment(.center)
                             .frame(width: 150)
                             .focused($isInputFocused)
-                            .foregroundColor(.primary)
-                        
-                        Text(unitLabel)
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.secondary)
+                        Text(unitLabel).font(.title2).fontWeight(.semibold).foregroundColor(.secondary)
                     }
                     .padding()
                     .background(RoundedRectangle(cornerRadius: 20).fill(Color.gray.opacity(0.1)))
@@ -264,25 +353,16 @@ struct OnboardingView: View {
         .scrollDismissesKeyboard(.interactively)
     }
     
-    // MARK: - Step 2: Goals
+    // MARK: - Step 2, 3, 4 (Standard)
     var goalsStep: some View {
         ScrollView {
             VStack(spacing: 24) {
                 headerText(title: "What is your goal?", subtitle: "Select a path to focus your training and nutrition.")
                 
-                // Goal Type Cards
                 VStack(spacing: 12) {
-                    selectionRow(title: "Cutting", subtitle: "Lose fat & preserve muscle", icon: "arrow.down.right.circle.fill", color: .green, isSelected: goalType == .cutting) {
-                        goalType = .cutting
-                    }
-                    
-                    selectionRow(title: "Bulking", subtitle: "Build muscle & strength", icon: "arrow.up.right.circle.fill", color: .orange, isSelected: goalType == .bulking) {
-                        goalType = .bulking
-                    }
-                    
-                    selectionRow(title: "Maintenance", subtitle: "Maintain current physique", icon: "equal.circle.fill", color: .blue, isSelected: goalType == .maintenance) {
-                        goalType = .maintenance
-                    }
+                    selectionRow(title: "Cutting", subtitle: "Lose fat & preserve muscle", icon: "arrow.down.right.circle.fill", color: .green, isSelected: goalType == .cutting) { goalType = .cutting }
+                    selectionRow(title: "Bulking", subtitle: "Build muscle & strength", icon: "arrow.up.right.circle.fill", color: .orange, isSelected: goalType == .bulking) { goalType = .bulking }
+                    selectionRow(title: "Maintenance", subtitle: "Maintain current physique", icon: "equal.circle.fill", color: .blue, isSelected: goalType == .maintenance) { goalType = .maintenance }
                 }
                 .padding(.horizontal)
                 
@@ -290,9 +370,7 @@ struct OnboardingView: View {
                 
                 if goalType == .maintenance {
                     VStack(spacing: 10) {
-                        Text("Maintenance Tolerance (+/-)")
-                            .font(.headline).foregroundColor(.secondary)
-                        
+                        Text("Maintenance Tolerance (+/-)").font(.headline).foregroundColor(.secondary)
                         HStack(alignment: .firstTextBaseline) {
                             TextField("2.0", value: Binding(
                                 get: { toDisplay(maintenanceTolerance) },
@@ -300,58 +378,32 @@ struct OnboardingView: View {
                             ), format: .number)
                             .keyboardType(.decimalPad)
                             .font(.system(size: 40, weight: .bold, design: .rounded))
-                            .multilineTextAlignment(.center)
-                            .frame(width: 100)
-                            .focused($isInputFocused)
-                            
-                            Text(unitLabel)
-                                .font(.headline)
-                                .foregroundColor(.secondary)
+                            .frame(width: 100).multilineTextAlignment(.center).focused($isInputFocused)
+                            Text(unitLabel).font(.headline).foregroundColor(.secondary)
                         }
-                        .padding()
-                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.gray.opacity(0.1)))
-                        
-                        Text("Fluctuations within this range are considered normal.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
+                        .padding().background(RoundedRectangle(cornerRadius: 16).fill(Color.gray.opacity(0.1)))
                     }
                 } else {
-                    // Target Weight Input
                     VStack(spacing: 10) {
-                        Text("Target Weight")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                        
+                        Text("Target Weight").font(.headline).foregroundColor(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 5) {
                             TextField("0", value: $targetWeight, format: .number)
                                 .keyboardType(.decimalPad)
                                 .font(.system(size: 60, weight: .bold, design: .rounded))
-                                .multilineTextAlignment(.center)
-                                .frame(width: 150)
-                                .focused($isInputFocused)
-                            
-                            Text(unitLabel)
-                                .font(.title2)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.secondary)
+                                .frame(width: 150).multilineTextAlignment(.center).focused($isInputFocused)
+                            Text(unitLabel).font(.title2).fontWeight(.semibold).foregroundColor(.secondary)
                         }
-                        .padding()
-                        .background(RoundedRectangle(cornerRadius: 20).fill(Color.gray.opacity(0.1)))
+                        .padding().background(RoundedRectangle(cornerRadius: 20).fill(Color.gray.opacity(0.1)))
                         
-                        // Validation Text
                         if let t = targetWeight, let c = currentWeight {
                             if goalType == .cutting && t >= c {
-                                Label("Target must be lower than current", systemImage: "exclamationmark.triangle.fill")
-                                    .font(.caption).foregroundColor(.red)
+                                Label("Target must be lower than current", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundColor(.red)
                             } else if goalType == .bulking && t <= c {
-                                Label("Target must be higher than current", systemImage: "exclamationmark.triangle.fill")
-                                    .font(.caption).foregroundColor(.red)
+                                Label("Target must be higher than current", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundColor(.red)
                             }
                         }
                     }
                 }
-                
                 Spacer(minLength: 50)
             }
             .padding(.top)
@@ -359,57 +411,42 @@ struct OnboardingView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    // MARK: - Step 3: Strategy
     var strategyStep: some View {
         ScrollView {
             VStack(spacing: 24) {
                 headerText(title: "Tracking Strategy", subtitle: "Choose how you want to achieve your goals.")
                 
-                // Toggle Card
                 VStack(spacing: 0) {
                     Toggle(isOn: $isCalorieCountingEnabled) {
                         VStack(alignment: .leading) {
-                            Text("Count Calories")
-                                .font(.headline)
-                            Text("Track daily intake targets")
-                                .font(.caption).foregroundColor(.secondary)
+                            Text("Count Calories").font(.headline)
+                            Text("Track daily intake targets").font(.caption).foregroundColor(.secondary)
                         }
-                    }
-                    .padding()
+                    }.padding()
                     
                     if isCalorieCountingEnabled {
                         Divider().padding(.leading)
                         Toggle(isOn: $trackCaloriesBurned) {
                             VStack(alignment: .leading) {
-                                Text("Track Calories Burned")
-                                    .font(.headline)
-                                Text("Adjust goal based on activity")
-                                    .font(.caption).foregroundColor(.secondary)
+                                Text("Track Calories Burned").font(.headline)
+                                Text("Adjust goal based on activity").font(.caption).foregroundColor(.secondary)
                             }
-                        }
-                        .padding()
-                        
+                        }.padding()
                         Divider().padding(.leading)
                         Toggle(isOn: $knowsDetails) {
                             VStack(alignment: .leading) {
-                                Text("Manual Entry")
-                                    .font(.headline)
-                                Text("I know my specific macro targets")
-                                    .font(.caption).foregroundColor(.secondary)
+                                Text("Manual Entry").font(.headline)
+                                Text("I know my specific macro targets").font(.caption).foregroundColor(.secondary)
                             }
-                        }
-                        .padding()
+                        }.padding()
                     }
                 }
-                .background(Color.gray.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .padding(.horizontal)
+                .background(Color.gray.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 16)).padding(.horizontal)
                 
                 if isCalorieCountingEnabled {
                     if knowsDetails {
                         VStack(spacing: 16) {
                             Text("Enter your custom targets").font(.headline)
-                            
                             HStack {
                                 inputField(title: "Maintenance", text: $maintenanceInput)
                                 inputField(title: "Daily Goal", text: $dailyGoalInput)
@@ -422,131 +459,75 @@ struct OnboardingView: View {
                                 Text("Goal Deadline").font(.headline)
                                 DatePicker("Achieve Goal By", selection: $targetDate, in: Date()..., displayedComponents: .date)
                                     .datePickerStyle(.graphical)
-                                    .background(Color.gray.opacity(0.1))
-                                    .cornerRadius(12)
+                                    .background(Color.gray.opacity(0.1)).cornerRadius(12)
                                     .onChange(of: targetDate) { _, _ in calculateGoalFromDate() }
                                     .onChange(of: maintenanceInput) { _, _ in calculateGoalFromDate() }
                             }
                             .padding(.horizontal)
                             
-                            // Summary Card
                             VStack(spacing: 16) {
-                                Text("Recommended Plan")
-                                    .font(.headline)
-                                
+                                Text("Recommended Plan").font(.headline)
                                 HStack(spacing: 30) {
-                                    VStack {
-                                        Text("Maintenance")
-                                            .font(.caption).foregroundColor(.secondary)
-                                        Text(maintenanceInput)
-                                            .font(.title2).bold()
-                                    }
-                                    
-                                    Image(systemName: "arrow.right")
-                                        .foregroundColor(.secondary)
-                                    
-                                    VStack {
-                                        Text("Daily Goal")
-                                            .font(.caption).foregroundColor(.secondary)
-                                        Text(dailyGoalInput)
-                                            .font(.title2).bold().foregroundColor(.blue)
-                                    }
+                                    VStack { Text("Maintenance").font(.caption).foregroundColor(.secondary); Text(maintenanceInput).font(.title2).bold() }
+                                    Image(systemName: "arrow.right").foregroundColor(.secondary)
+                                    VStack { Text("Daily Goal").font(.caption).foregroundColor(.secondary); Text(dailyGoalInput).font(.title2).bold().foregroundColor(.blue) }
                                 }
-                                
                                 if let goal = Int(dailyGoalInput), let maint = Int(maintenanceInput) {
                                     let diff = goal - maint
                                     Text(diff < 0 ? "\(abs(diff)) calorie deficit / day" : "+\(diff) calorie surplus / day")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
+                                        .font(.subheadline).fontWeight(.medium)
                                         .foregroundColor(diff < 0 ? .green : .orange)
-                                        .padding(.vertical, 4)
-                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4).padding(.horizontal, 12)
                                         .background((diff < 0 ? Color.green : Color.orange).opacity(0.1))
                                         .clipShape(Capsule())
                                 }
                             }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(RoundedRectangle(cornerRadius: 16).stroke(Color.blue.opacity(0.3), lineWidth: 1))
-                            .padding(.horizontal)
+                            .padding().frame(maxWidth: .infinity).background(RoundedRectangle(cornerRadius: 16).stroke(Color.blue.opacity(0.3), lineWidth: 1)).padding(.horizontal)
                             .onAppear { calculateGoalFromDate() }
                         }
                     }
-                } else {
-                    Text("We'll focus on tracking your workouts and weight trends instead.")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding()
                 }
-                
                 Spacer(minLength: 50)
             }
             .padding(.top)
         }
         .scrollDismissesKeyboard(.interactively)
+        .onChange(of: currentStep) { _, newValue in
+            if newValue == 3 {
+                calculateGoalFromDate()
+            }
+        }
     }
     
-    // MARK: - Step 4: Final
     var finalStep: some View {
         VStack(spacing: 30) {
             Spacer()
-            
             ZStack {
-                Circle()
-                    .fill(Color.green.opacity(0.1))
-                    .frame(width: 160, height: 160)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.green)
-                    .scaleEffect(1.0)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.5).delay(0.2), value: true)
+                Circle().fill(Color.green.opacity(0.1)).frame(width: 160, height: 160)
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 80)).foregroundColor(.green)
+                    .scaleEffect(1.0).animation(.spring(response: 0.5, dampingFraction: 0.5).delay(0.2), value: true)
             }
-            
             VStack(spacing: 12) {
-                Text("You're All Set!")
-                    .font(.title).bold()
-                Text("We've saved your starting weight and configured your profile.")
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
+                Text("You're All Set!").font(.title).bold()
+                Text("We've saved your starting weight and configured your profile.").multilineTextAlignment(.center).foregroundColor(.secondary)
             }
-            
             if isCalorieCountingEnabled {
                 HStack(spacing: 40) {
-                    VStack {
-                        Text("\(dailyGoalInput)")
-                            .font(.title).bold()
-                        Text("Daily Goal")
-                            .font(.caption).foregroundColor(.secondary)
-                    }
-                    VStack {
-                        Text("\(maintenanceInput)")
-                            .font(.title).bold()
-                        Text("Maintenance")
-                            .font(.caption).foregroundColor(.secondary)
-                    }
+                    VStack { Text("\(dailyGoalInput)").font(.title).bold(); Text("Daily Goal").font(.caption).foregroundColor(.secondary) }
+                    VStack { Text("\(maintenanceInput)").font(.title).bold(); Text("Maintenance").font(.caption).foregroundColor(.secondary) }
                 }
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(16)
+                .padding().background(Color.gray.opacity(0.1)).cornerRadius(16)
             }
-            
             Spacer()
         }
         .padding()
     }
     
-    // MARK: - UI Components
-    
+    // MARK: - Helper Views
     private func headerText(title: String, subtitle: String) -> some View {
         VStack(spacing: 8) {
-            Text(title)
-                .font(.title2)
-                .fontWeight(.bold)
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+            Text(title).font(.title2).fontWeight(.bold)
+            Text(subtitle).font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
         }
         .padding(.horizontal)
     }
@@ -554,21 +535,13 @@ struct OnboardingView: View {
     private func selectionCard(title: String, icon: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: { withAnimation { action() } }) {
             VStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 32))
-                Text(title)
-                    .fontWeight(.medium)
+                Image(systemName: icon).font(.system(size: 32))
+                Text(title).fontWeight(.medium)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity).padding(.vertical, 20)
             .background(isSelected ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
-            )
-            .cornerRadius(16)
-            .foregroundColor(isSelected ? .blue : .primary)
-            .contentShape(Rectangle())
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2))
+            .cornerRadius(16).foregroundColor(isSelected ? .blue : .primary).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -576,33 +549,16 @@ struct OnboardingView: View {
     private func selectionRow(title: String, subtitle: String, icon: String, color: Color, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: { withAnimation { action() } }) {
             HStack(spacing: 16) {
-                Image(systemName: icon)
-                    .font(.title)
-                    .foregroundColor(isSelected ? color : .gray)
-                
+                Image(systemName: icon).font(.title).foregroundColor(isSelected ? color : .gray)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    Text(title).fontWeight(.semibold).foregroundColor(.primary)
+                    Text(subtitle).font(.caption).foregroundColor(.secondary)
                 }
-                
                 Spacer()
-                
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(color)
-                }
+                if isSelected { Image(systemName: "checkmark.circle.fill").foregroundColor(color) }
             }
-            .padding()
-            .background(isSelected ? color.opacity(0.1) : Color.gray.opacity(0.1))
-            .cornerRadius(16)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isSelected ? color : Color.clear, lineWidth: 2)
-            )
+            .padding().background(isSelected ? color.opacity(0.1) : Color.gray.opacity(0.1))
+            .cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(isSelected ? color : Color.clear, lineWidth: 2))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -610,26 +566,42 @@ struct OnboardingView: View {
     
     private func inputField(title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading) {
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-            TextField("0", text: text)
-                .keyboardType(.numberPad)
-                .font(.title2).bold()
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(10)
-                .focused($isInputFocused)
+            Text(title).font(.caption).foregroundColor(.secondary)
+            TextField("0", text: text).keyboardType(.numberPad).font(.title2).bold().padding().background(Color.gray.opacity(0.1)).cornerRadius(10).focused($isInputFocused)
         }
     }
     
     // MARK: - Logic
     
+    func updateHeightFromImperial() {
+        if let ft = heightFt, let inches = heightIn {
+            let totalInches = (Double(ft) * 12.0) + Double(inches)
+            currentHeight = totalInches * 2.54
+        }
+    }
+    
+    // Final check to ensure consistency if they typed in Imperial but didn't trigger an update (rare) or just to be safe
+    func resolveHeight() {
+        if heightUnit == .imperial {
+            updateHeightFromImperial()
+        }
+    }
+    
     func estimateMaintenance() {
-        guard let cWeight = currentWeight else { return }
+        guard let cWeight = currentWeight,
+              let cHeight = currentHeight else { return }
+              
         let weightKg = toKg(cWeight)
-        let multiplier: Double = (gender == .male) ? 32.0 : 29.0
-        let estimated = Int(weightKg * multiplier)
+        
+        // Mifflin-St Jeor Equation
+        // Men: (10 × weight in kg) + (6.25 × height in cm) - (5 × age in years) + 5
+        let base: Double = (10 * weightKg) + (6.25 * cHeight) - (5 * Double(computedAge))
+        let genderOffset: Double = (gender == .male) ? 5 : -161
+        let bmr = base + genderOffset
+        
+        let tdee = bmr * activityLevel.multiplier
+        
+        let estimated = Int(tdee)
         maintenanceInput = String(estimated)
         if dailyGoalInput.isEmpty {
             dailyGoalInput = String(estimated)
@@ -653,8 +625,7 @@ struct OnboardingView: View {
         
         let today = Calendar.current.startOfDay(for: Date())
         let target = Calendar.current.startOfDay(for: targetDate)
-        let components = Calendar.current.dateComponents([.day], from: today, to: target)
-        let days = components.day ?? 1
+        let days = Calendar.current.dateComponents([.day], from: today, to: target).day ?? 1
         
         guard days > 0 else {
             dailyGoalInput = String(maintenance)
@@ -672,24 +643,26 @@ struct OnboardingView: View {
         guard let finalCurrent = currentWeight else { return }
         
         // 1. Resolve final target
-        let finalTarget: Double
-        if goalType == .maintenance {
-            finalTarget = finalCurrent
-        } else {
-            finalTarget = targetWeight ?? finalCurrent
-        }
+        let finalTarget = (goalType == .maintenance) ? finalCurrent : (targetWeight ?? finalCurrent)
         
-        // 2. Normalize to storage units (Kg)
+        // 2. Normalize to storage units (Kg, Cm)
         let storedCurrentWeightKg = toKg(finalCurrent)
         let storedTargetWeightKg = toKg(finalTarget)
         let storedMaintenance = Int(maintenanceInput) ?? 2500
         let storedDailyGoal = Int(dailyGoalInput) ?? 2000
+        let storedHeight = currentHeight ?? 175.0
         
         // 3. Create and Save UserProfile
         let profile = UserProfile()
         profile.unitSystem = unitSystem.rawValue
+        profile.heightUnitPreference = heightUnit.rawValue // Save height preference
         profile.isDarkMode = isDarkMode
         profile.gender = gender.rawValue
+        
+        // New Fields
+        profile.dateOfBirth = dateOfBirth
+        profile.height = storedHeight
+        profile.activityLevel = activityLevel.rawValue
         
         profile.goalType = goalType.rawValue
         profile.targetWeight = storedTargetWeightKg
@@ -705,7 +678,6 @@ struct OnboardingView: View {
         
         // 4. Seed Data
         DefaultExercises.seed(context: modelContext)
-        
         let firstEntry = WeightEntry(date: Date(), weight: storedCurrentWeightKg, note: "")
         modelContext.insert(firstEntry)
               
@@ -717,10 +689,8 @@ struct OnboardingView: View {
             maintenanceCalories: storedMaintenance
         )
         
-        // 5. Force Save to Disk
         try? modelContext.save()
         
-        // 6. Trigger RootView to switch screens
         withAnimation {
             isOnboardingCompleted = true
         }
