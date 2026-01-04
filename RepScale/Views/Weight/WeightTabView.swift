@@ -195,13 +195,15 @@ struct WeightListContent: View {
                                 if !events.isEmpty {
                                     HStack(spacing: 6) {
                                         ForEach(events, id: \.self) { event in
+                                            let color = getEventColor(event)
+                                            
                                             Text(event)
                                                 .font(.caption2)
                                                 .fontWeight(.bold)
                                                 .padding(.vertical, 3)
                                                 .padding(.horizontal, 8)
-                                                .background(event.contains("Started") ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
-                                                .foregroundColor(event.contains("Started") ? .green : .red)
+                                                .background(color.opacity(0.15))
+                                                .foregroundColor(color)
                                                 .cornerRadius(6)
                                         }
                                     }
@@ -373,6 +375,12 @@ struct WeightListContent: View {
     private func getGoalEvents(for date: Date) -> [String] {
         var events: [String] = []
         
+        // 1. Started (Left)
+        if let latestStart = allGoalPeriods.first(where: { Calendar.current.isDate($0.startDate, inSameDayAs: date) }) {
+             events.append("\(latestStart.goalType) Goal Started")
+        }
+        
+        // 2. Ended (Right)
         if let significantEnd = allGoalPeriods.first(where: { p in
             guard let end = p.endDate else { return false }
             return Calendar.current.isDate(end, inSameDayAs: date) &&
@@ -381,15 +389,22 @@ struct WeightListContent: View {
             events.append("\(significantEnd.goalType) Goal Ended")
         }
         
-        if let latestStart = allGoalPeriods.first(where: { Calendar.current.isDate($0.startDate, inSameDayAs: date) }) {
-             events.append("\(latestStart.goalType) Goal Started")
-        }
-        
         if let oldest = weights.last, Calendar.current.isDate(date, inSameDayAs: oldest.date) {
             events.removeAll { $0.contains("Ended") }
         }
         
         return events
+    }
+    
+    private func getEventColor(_ event: String) -> Color {
+        if event.contains("Cutting") {
+            return .green
+        } else if event.contains("Bulking") {
+            return .red
+        } else if event.contains("Maintenance") {
+            return .blue
+        }
+        return .secondary
     }
 
     private func saveWeight() {
