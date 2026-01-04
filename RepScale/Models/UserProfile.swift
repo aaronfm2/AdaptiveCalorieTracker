@@ -30,6 +30,8 @@ final class UserProfile {
     var strengthGraphTimeRange: String = "90 Days"
     var strengthGraphExercise: String = "Barbell Bench Press" // Default
     var strengthGraphReps: Int = 5
+    var repGraphExercise: String = ""
+    var repGraphWeight: Double = -1.0
     
     // MARK: - Workout Preferences (NEW)
     var trackedMuscles: String = "Chest,Back,Legs,Shoulders,Abs,Cardio,Biceps,Triceps"

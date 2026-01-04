@@ -580,3 +580,205 @@ struct VolumeTrackerCard: View {
         }
     }
 }
+// MARK: RepTrackerCard
+struct RepTrackerCard: View {
+    @Bindable var profile: UserProfile
+    var workouts: [Workout]
+    var index: Int
+    var totalCount: Int
+    var onMoveUp: () -> Void
+    var onMoveDown: () -> Void
+    
+    var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
+    
+    var body: some View {
+        // 1. Get all unique exercise names
+        let allExercises = Set(workouts.flatMap { $0.exercises ?? [] }.map { $0.name }).sorted()
+        
+        // 2. Get unique weights for the *selected* exercise (for the filter dropdown)
+        let exerciseWeights = getUniqueWeights(for: profile.repGraphExercise)
+        
+        // 3. Prepare data (filtered by exercise AND weight)
+        let data = getRepHistory()
+        let allReps = data.map { $0.reps }
+        let maxReps = (allReps.max() ?? 10) + 5
+        
+        return VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                Text("Rep Strength Tracker").font(.headline)
+                Spacer()
+                ReorderArrows(index: index, totalCount: totalCount, onUp: onMoveUp, onDown: onMoveDown)
+            }
+            
+            // Filters Row
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // 1. EXERCISE FILTER (Left)
+                    Menu {
+                        Picker("Exercise", selection: $profile.repGraphExercise) {
+                            Text("Select Exercise").tag("")
+                            ForEach(allExercises, id: \.self) { exercise in
+                                Text(exercise).tag(exercise)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(profile.repGraphExercise.isEmpty ? "Select Exercise" : profile.repGraphExercise)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                        }
+                        .font(.caption).fontWeight(.medium).foregroundColor(.blue)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.1), in: Capsule())
+                    }
+                    
+                    // 2. WEIGHT FILTER (Right of Exercise)
+                    // Only show if an exercise is selected
+                    if !profile.repGraphExercise.isEmpty {
+                        Menu {
+                            Picker("Weight", selection: $profile.repGraphWeight) {
+                                Text("All Weights").tag(-1.0)
+                                ForEach(exerciseWeights, id: \.self) { weight in
+                                    Text("\(formatWeight(weight)) \(weightLabel)").tag(weight)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                // Show "All" or the specific weight
+                                if profile.repGraphWeight == -1.0 {
+                                    Text("All Weights")
+                                } else {
+                                    Text(formatWeight(profile.repGraphWeight))
+                                }
+                                Image(systemName: "chevron.down")
+                            }
+                            .font(.caption).fontWeight(.medium).foregroundColor(.green)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Color.green.opacity(0.1), in: Capsule())
+                        }
+                    }
+                }
+            }
+            
+            // Chart Content
+            if profile.repGraphExercise.isEmpty {
+                Text("Select an exercise to track reps").font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .frame(height: 180)
+                    .background(Color.gray.opacity(0.05))
+                    .cornerRadius(12)
+            } else if data.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary.opacity(0.3))
+                    Text("No data available")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 180)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(12)
+            } else {
+                Chart {
+                    ForEach(data) { point in
+                        BarMark(
+                            x: .value("Date", point.date),
+                            y: .value("Reps", point.reps)
+                        )
+                        .foregroundStyle(LinearGradient(colors: [.purple, .blue], startPoint: .bottom, endPoint: .top))
+                        .cornerRadius(4)
+                    }
+                    
+                    if let avg = calculateAverage(data) {
+                        RuleMark(y: .value("Average", avg))
+                            .foregroundStyle(.gray.opacity(0.5))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [5]))
+                            .annotation(position: .top, alignment: .leading) {
+                                Text("Avg: \(Int(avg))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.leading, 4)
+                            }
+                    }
+                }
+                .frame(height: 180)
+                .chartYScale(domain: 0...maxReps)
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 5)) { _ in
+                        AxisValueLabel(format: .dateTime.month().day())
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1)))
+        // Reset weight filter if exercise changes
+        .onChange(of: profile.repGraphExercise) { _, _ in
+            profile.repGraphWeight = -1.0
+        }
+    }
+    
+    // MARK: - Helpers
+    
+    private func formatWeight(_ weight: Double) -> String {
+        let converted = weight.toUserWeight(system: profile.unitSystem)
+        return String(format: "%.1f", converted)
+    }
+    
+    private func getUniqueWeights(for exerciseName: String) -> [Double] {
+        guard !exerciseName.isEmpty else { return [] }
+        
+        let allWeights = workouts
+            .flatMap { $0.exercises ?? [] }
+            .filter { $0.name == exerciseName }
+            .compactMap { $0.weight }
+        
+        return Set(allWeights).sorted()
+    }
+    
+    private func getRepHistory() -> [RepDataPoint] {
+        guard !profile.repGraphExercise.isEmpty else { return [] }
+        
+        // Filter workouts that contain the selected exercise
+        let relevantWorkouts = workouts.filter { workout in
+            workout.exercises?.contains(where: { $0.name == profile.repGraphExercise }) ?? false
+        }.sorted(by: { $0.date < $1.date })
+        
+        return relevantWorkouts.compactMap { workout -> RepDataPoint? in
+            // 1. Get sets for the exercise
+            var matchingSets = workout.exercises?.filter { $0.name == profile.repGraphExercise } ?? []
+            
+            // 2. Apply Weight Filter if not "All" (-1.0)
+            if profile.repGraphWeight != -1.0 {
+                matchingSets = matchingSets.filter { entry in
+                    guard let w = entry.weight else { return false }
+                    return abs(w - profile.repGraphWeight) < 0.01
+                }
+            }
+            
+            guard !matchingSets.isEmpty else { return nil }
+            
+            // 3. Sum reps
+            let totalReps = matchingSets.reduce(0) { $0 + ($1.reps ?? 0) }
+            
+            guard totalReps > 0 else { return nil }
+            return RepDataPoint(date: workout.date, reps: Double(totalReps))
+        }
+    }
+    
+    private func calculateAverage(_ data: [RepDataPoint]) -> Double? {
+        guard !data.isEmpty else { return nil }
+        let total = data.reduce(0) { $0 + $1.reps }
+        return total / Double(data.count)
+    }
+}
+
+// Ensure this struct is present in the file
+struct RepDataPoint: Identifiable {
+    let id = UUID()
+    let date: Date
+    let reps: Double
+}

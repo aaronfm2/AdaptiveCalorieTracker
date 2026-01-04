@@ -93,6 +93,7 @@ enum DashboardCardType: String, CaseIterable, Codable, Identifiable {
     case workoutDistribution = "Workout Focus"
     case weeklyWorkoutGoal = "Weekly Goal"
     case strengthTracker = "Strength Tracker"
+    case repTracker = "Rep Tracker" 
     case volumeTracker = "Volume Tracker"
     case nutrition = "Nutrition"
     case macroDistribution = "Macro Distribution"

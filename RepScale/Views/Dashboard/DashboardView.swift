@@ -147,6 +147,12 @@ struct DashboardView: View {
                 index: index, totalCount: totalCount,
                 onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
             )
+        case .repTracker: // <--- ADDED
+            RepTrackerCard(
+                profile: profile, workouts: workouts,
+                index: index, totalCount: totalCount,
+                onMoveUp: { moveCardUp(index) }, onMoveDown: { moveCardDown(index) }
+            )
         case .volumeTracker:
                 VolumeTrackerCard(
                     profile: profile, workouts: workouts,
@@ -191,6 +197,13 @@ struct DashboardView: View {
             // Find most recent exercise, or default to a common one
             if let recent = workouts.first?.exercises?.first?.name {
                 profile.strengthGraphExercise = recent
+            }
+        }
+        
+        // Default rep exercise initialization <--- ADDED
+        if profile.repGraphExercise.isEmpty {
+            if let recent = workouts.first?.exercises?.first?.name {
+                profile.repGraphExercise = recent
             }
         }
         
@@ -367,6 +380,8 @@ struct CustomizationSheet: View {
                     toggleFor(.workoutDistribution)
                     toggleFor(.weeklyWorkoutGoal)
                     toggleFor(.strengthTracker)
+                    toggleFor(.repTracker) // <--- ADDED
+                    toggleFor(.volumeTracker)
                 } header: {
                     Label("Workout Cards", systemImage: "figure.run")
                 }
@@ -374,6 +389,7 @@ struct CustomizationSheet: View {
                 // MARK: - Nutrition Section
                 Section {
                     toggleFor(.nutrition)
+                    toggleFor(.macroDistribution)
                 } header: {
                     Label("Nutrition", systemImage: "leaf")
                 }
@@ -450,7 +466,7 @@ struct CustomizationSheet: View {
     private func isClassified(_ type: DashboardCardType) -> Bool {
         switch type {
         case .projection, .weightChange, .weightTrend,
-                .workoutDistribution, .weeklyWorkoutGoal, .strengthTracker, .volumeTracker, .nutrition, .macroDistribution:
+                .workoutDistribution, .weeklyWorkoutGoal, .strengthTracker, .volumeTracker, .nutrition, .macroDistribution, .repTracker: // <--- ADDED
             return true
         }
     }
@@ -463,6 +479,7 @@ struct CustomizationSheet: View {
         case .workoutDistribution: return "chart.pie.fill"
         case .weeklyWorkoutGoal: return "target"
         case .strengthTracker: return "dumbbell.fill"
+        case .repTracker: return "chart.bar.xaxis" // <--- ADDED
         case .volumeTracker: return "chart.bar.fill"
         case .nutrition: return "fork.knife"
         case .macroDistribution: return "chart.pie.fill"
