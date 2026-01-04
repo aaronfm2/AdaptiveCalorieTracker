@@ -136,34 +136,64 @@ class DataManager {
     /// Syncs the UserProfile and active GoalPeriod start data to match the earliest available WeightEntry.
     /// Useful if history was deleted but the "Start Date" or "Start Weight" remained stale.
     func syncStartDataWithHistory() {
-        // 1. Get the earliest valid weight entry
-        let weightDescriptor = FetchDescriptor<WeightEntry>(sortBy: [SortDescriptor(\.date, order: .forward)])
+            // 1. Get the earliest valid weight entry
+            let weightDescriptor = FetchDescriptor<WeightEntry>(sortBy: [SortDescriptor(\.date, order: .forward)])
+            
+            do {
+                let weights = try modelContext.fetch(weightDescriptor)
+                guard let earliestEntry = weights.first else {
+                    return
+                }
+                
+                // 2. Fix UserProfile 'createdAt' (often used as "Member Since")
+                let profileDescriptor = FetchDescriptor<UserProfile>()
+                if let profile = try modelContext.fetch(profileDescriptor).first {
+                    // Only update if the profile date is significantly different to avoid unnecessary writes
+                    if Calendar.current.startOfDay(for: profile.createdAt) != Calendar.current.startOfDay(for: earliestEntry.date) {
+                        profile.createdAt = earliestEntry.date
+                    }
+                }
+                
+                // 3. Fix the active GoalPeriod
+                let allPeriodsDescriptor = FetchDescriptor<GoalPeriod>()
+                let allPeriods = try modelContext.fetch(allPeriodsDescriptor)
+                
+                // Find the active period
+                if let activePeriod = allPeriods.first(where: { $0.endDate == nil }) {
+                    
+                    // CRITICAL FIX: Check if there are any CLOSED periods (history).
+                    let hasHistory = allPeriods.contains(where: { $0.endDate != nil })
+                    
+                    if !hasHistory {
+                        // Only backdate if this is the ONLY goal period (start of journey).
+                        // This handles the case where a user starts the app, logs a past weight,
+                        // and we want the initial goal to stretch back to cover it.
+                        activePeriod.startDate = earliestEntry.date
+                        activePeriod.startWeight = earliestEntry.weight
+                    } else {
+                        // If we have history, this is a PHASE CHANGE.
+                        // Do NOT backdate the start date. Respect the date it was created.
+                    }
+                }
+                
+            } catch {
+                print("DataManager: Failed to sync start data: \(error)")
+            }
+        }
+    
+    // MARK: Update Active Goal Period
+    func updateActiveGoalPeriod(targetWeight: Double, dailyCalorieGoal: Int, maintenanceCalories: Int) {
+        let descriptor = FetchDescriptor<GoalPeriod>(predicate: #Predicate { $0.endDate == nil })
         
         do {
-            let weights = try modelContext.fetch(weightDescriptor)
-            guard let earliestEntry = weights.first else {
-                print("No weight history found to sync with.")
-                return
+            if let activePeriod = try modelContext.fetch(descriptor).first {
+                activePeriod.targetWeight = targetWeight
+                activePeriod.dailyCalorieGoal = dailyCalorieGoal
+                activePeriod.maintenanceCalories = maintenanceCalories
+                // Note: We do NOT update startDate or startWeight to preserve the timeline of the current goal
             }
-            
-            // 2. Fix UserProfile 'createdAt' (often used as "Member Since" or default start)
-            let profileDescriptor = FetchDescriptor<UserProfile>()
-            if let profile = try modelContext.fetch(profileDescriptor).first {
-                profile.createdAt = earliestEntry.date
-            }
-            
-            // 3. Fix the active GoalPeriod (if any) to match the reality of the history
-            // This ensures the "Journey" progress bar uses the correct start point.
-            let goalDescriptor = FetchDescriptor<GoalPeriod>(predicate: #Predicate { $0.endDate == nil })
-            if let activePeriod = try modelContext.fetch(goalDescriptor).first {
-                activePeriod.startDate = earliestEntry.date
-                activePeriod.startWeight = earliestEntry.weight
-            }
-            
-            print("✅ Synced Start Data: Date=\(earliestEntry.date), Weight=\(earliestEntry.weight)")
-            
         } catch {
-            print("DataManager: Failed to sync start data: \(error)")
+            print("DataManager: Failed to update active period: \(error)")
         }
     }
 }

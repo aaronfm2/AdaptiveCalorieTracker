@@ -8,6 +8,9 @@ struct WeightStatsView: View {
 
     @Environment(\.dismiss) var dismiss
     
+    // NEW: Needed for deleting duplicates
+    @Environment(\.modelContext) private var modelContext
+    
     // FETCH GOAL PERIODS
     @Query(sort: \GoalPeriod.startDate, order: .reverse) private var rawPeriods: [GoalPeriod]
     
@@ -202,10 +205,49 @@ struct WeightStatsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .onAppear {
+                cleanUpDuplicates()
+            }
         }
     }
     
     // MARK: - Helpers
+    
+    /// Scans for GoalPeriods that start on the same day and removes duplicates.
+    /// Prioritizes keeping the currently active period.
+    private func cleanUpDuplicates() {
+        do {
+            // 1. Group periods by their Start Date (ignoring time)
+            let periods = try modelContext.fetch(FetchDescriptor<GoalPeriod>())
+            let grouped = Dictionary(grouping: periods) { period in
+                Calendar.current.startOfDay(for: period.startDate)
+            }
+            
+            for (_, group) in grouped {
+                // If we have more than 1 entry for the exact same day
+                if group.count > 1 {
+                    // 2. Determine which one to keep
+                    // Sort so that:
+                    // - Active periods (endDate == nil) come first
+                    // - If both closed, maybe the one created last (implied by ID) or effectively random
+                    let sortedGroup = group.sorted { p1, p2 in
+                        if p1.endDate == nil { return true }  // Keep p1 if active
+                        if p2.endDate == nil { return false } // Keep p2 if active
+                        return false
+                    }
+                    
+                    if let keeper = sortedGroup.first {
+                        // 3. Delete the losers
+                        for duplicate in group where duplicate.id != keeper.id {
+                            modelContext.delete(duplicate)
+                        }
+                    }
+                }
+            }
+        } catch {
+            print("Failed to clean up duplicate periods: \(error)")
+        }
+    }
     
     func getDays(for type: GoalType) -> Int {
         stats.first(where: { $0.type == type.rawValue })?.days ?? 0

@@ -20,7 +20,7 @@ struct GoalConfigurationView: View {
     @State private var maintenanceSource: Int = 0
     @State private var manualMaintenanceInput: String = ""
     @State private var maintenanceDisplay: Int = 0
-
+    
     @State private var dailyGoal: Int = 0
     @State private var calculatedDeficit: Int = 0
     
@@ -68,7 +68,7 @@ struct GoalConfigurationView: View {
                             Text("No Data").foregroundColor(.red)
                         }
                     }
-
+                    
                     // --- Conditional Input ---
                     if selectedGoalType != .maintenance {
                         VStack(alignment: .leading, spacing: 4) {
@@ -272,24 +272,36 @@ struct GoalConfigurationView: View {
             tWeightStored = t.toStoredWeight(system: profile.unitSystem)
         }
         
+        // 1. Check if the goal type is changing
+        // We must check this BEFORE we update the profile.goalType below
+        let isSameGoalType = (selectedGoalType.rawValue == profile.goalType)
+        
         // --- CLOUD SYNC: Update Profile ---
-        // Instead of UserDefaults, we update the SwiftData object which syncs automatically.
         profile.targetWeight = tWeightStored
         profile.dailyCalorieGoal = dailyGoal
         profile.goalType = selectedGoalType.rawValue
         profile.maintenanceCalories = maintenanceDisplay
         profile.maintenanceTolerance = localMaintenanceTolerance
         
-        // We also create a GoalPeriod record for historical tracking
-        let startW = latestWeightKg ?? 0.0
-        
-        dataManager.startNewGoalPeriod(
-            goalType: selectedGoalType.rawValue,
-            startWeight: startW,
-            targetWeight: tWeightStored,
-            dailyCalorieGoal: dailyGoal,
-            maintenanceCalories: maintenanceDisplay
-        )
+        if isSameGoalType {
+            // 2. SAME GOAL: Update the existing active period
+            dataManager.updateActiveGoalPeriod(
+                targetWeight: tWeightStored,
+                dailyCalorieGoal: dailyGoal,
+                maintenanceCalories: maintenanceDisplay
+            )
+        } else {
+            // 3. NEW GOAL: Close old, start new (Original Logic)
+            let startW = latestWeightKg ?? 0.0
+            
+            dataManager.startNewGoalPeriod(
+                goalType: selectedGoalType.rawValue,
+                startWeight: startW,
+                targetWeight: tWeightStored,
+                dailyCalorieGoal: dailyGoal,
+                maintenanceCalories: maintenanceDisplay
+            )
+        }
         
         dismiss()
     }
