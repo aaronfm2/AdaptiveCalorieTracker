@@ -12,7 +12,11 @@ final class UserProfile {
     
     // MARK: - Biometrics (NEW)
     var height: Double = 175.0 // Stored in cm
-    var age: Int = 30
+    var heightUnitPreference: String = UnitSystem.metric.rawValue // Separate preference for height
+    
+    // Replaced simple integer age with Date of Birth
+    var dateOfBirth: Date = Calendar.current.date(byAdding: .year, value: -30, to: Date())!
+    
     var activityLevel: String = ActivityLevel.moderatelyActive.rawValue
     
     // MARK: - Goals & Strategy
@@ -45,5 +49,12 @@ final class UserProfile {
     
     init() {
         self.createdAt = Date()
+    }
+    
+    // Computed Age for easy access
+    var age: Int {
+        let calendar = Calendar.current
+        let ageComponents = calendar.dateComponents([.year], from: dateOfBirth, to: Date())
+        return ageComponents.year ?? 30
     }
 }

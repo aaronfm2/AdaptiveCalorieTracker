@@ -21,6 +21,9 @@ struct SettingsView: View {
     @State private var showingResetAlert = false
     @State private var showingRestartAlert = false
     
+    // Local state for Height UI to prevent drift
+    @State private var selectedHeightUnit: UnitSystem = .metric
+    
     var weightLabel: String { profile.unitSystem == UnitSystem.imperial.rawValue ? "lbs" : "kg" }
     
     var goalColor: Color {
@@ -50,7 +53,7 @@ struct SettingsView: View {
                     Text("General")
                 }
                 
-                // MARK: - Section 2: Personal Details (NEW)
+                // MARK: - Section 2: Personal Details
                 Section {
                     Picker(selection: $profile.gender) {
                         ForEach(Gender.allCases, id: \.self) { gender in
@@ -58,35 +61,88 @@ struct SettingsView: View {
                         }
                     } label: { Label("Gender", systemImage: "person").foregroundColor(.primary) }
                     
-                    HStack {
-                        Label("Age", systemImage: "calendar").foregroundColor(.primary)
-                        Spacer()
-                        TextField("Age", value: $profile.age, format: .number)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 50)
+                    // Date of Birth
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Label("Date of Birth", systemImage: "calendar").foregroundColor(.primary)
+                            Spacer()
+                            Text("Age: \(profile.age)").foregroundColor(.secondary)
+                        }
+                        DatePicker("", selection: $profile.dateOfBirth, displayedComponents: .date)
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .padding(.vertical, 4)
                     
-                    HStack {
-                        Label("Height", systemImage: "arrow.up.and.down").foregroundColor(.primary)
-                        Spacer()
-                        if profile.unitSystem == UnitSystem.metric.rawValue {
-                            TextField("cm", value: $profile.height, format: .number)
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.trailing)
-                                .frame(width: 60)
-                            Text("cm").foregroundColor(.secondary)
-                        } else {
-                            // Binding to convert cm <-> ft
-                            let heightBinding = Binding<Double>(
-                                get: { profile.height.toUserHeight(system: UnitSystem.imperial.rawValue) },
-                                set: { profile.height = $0.toStoredHeight(system: UnitSystem.imperial.rawValue) }
-                            )
-                            TextField("ft", value: heightBinding, format: .number.precision(.fractionLength(1)))
-                                .keyboardType(.decimalPad)
-                                .multilineTextAlignment(.trailing)
-                                .frame(width: 60)
-                            Text("ft").foregroundColor(.secondary)
+                    // Height
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Label("Height", systemImage: "arrow.up.and.down").foregroundColor(.primary)
+                            Spacer()
+                            Picker("", selection: $selectedHeightUnit) {
+                                Text("cm").tag(UnitSystem.metric)
+                                Text("ft/in").tag(UnitSystem.imperial)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 100)
+                            .onChange(of: selectedHeightUnit) { _, newVal in
+                                // Save preference
+                                profile.heightUnitPreference = newVal.rawValue
+                            }
+                        }
+                        
+                        HStack {
+                            Spacer()
+                            if selectedHeightUnit == .metric {
+                                TextField("cm", value: $profile.height, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 80)
+                                Text("cm").foregroundColor(.secondary)
+                            } else {
+                                // Smart bindings to prevent drift:
+                                // Changes only propagate to 'profile.height' if the user edits these fields.
+                                // Reading does not cause a write-back of rounded values.
+                                let ftBinding = Binding<Int?>(
+                                    get: {
+                                        let totalInches = profile.height / 2.54
+                                        return Int(totalInches / 12)
+                                    },
+                                    set: { newFt in
+                                        // Combine newFt with current Inches
+                                        let currentTotalInches = profile.height / 2.54
+                                        let currentIn = Int(currentTotalInches.truncatingRemainder(dividingBy: 12))
+                                        let inches = Double((newFt ?? 0) * 12 + currentIn)
+                                        profile.height = inches * 2.54
+                                    }
+                                )
+                                let inBinding = Binding<Int?>(
+                                    get: {
+                                        let totalInches = profile.height / 2.54
+                                        return Int(totalInches.truncatingRemainder(dividingBy: 12))
+                                    },
+                                    set: { newIn in
+                                        // Combine current Feet with newIn
+                                        let currentTotalInches = profile.height / 2.54
+                                        let currentFt = Int(currentTotalInches / 12)
+                                        let inches = Double(currentFt * 12 + (newIn ?? 0))
+                                        profile.height = inches * 2.54
+                                    }
+                                )
+                                
+                                TextField("ft", value: ftBinding, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 50)
+                                Text("ft").foregroundColor(.secondary)
+                                
+                                TextField("in", value: inBinding, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 50)
+                                Text("in").foregroundColor(.secondary)
+                            }
                         }
                     }
                     
@@ -208,6 +264,14 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingShareSheet) { if let url = exportURL { ShareSheet(activityItems: [url]) } }
             .presentationDetents([.large])
+            .onAppear {
+                // Initialize local height unit from profile preference
+                if let pref = UnitSystem(rawValue: profile.heightUnitPreference) {
+                    selectedHeightUnit = pref
+                } else {
+                    selectedHeightUnit = UnitSystem(rawValue: profile.unitSystem) ?? .metric
+                }
+            }
         }
     }
     

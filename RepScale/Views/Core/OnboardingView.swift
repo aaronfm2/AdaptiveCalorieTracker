@@ -17,13 +17,17 @@ struct OnboardingView: View {
     
     // Biometrics
     @State private var currentWeight: Double? = nil
-    @State private var currentHeight: Double? = nil // Stored in cm
-    @State private var currentAge: Int? = nil
-    @State private var activityLevel: ActivityLevel = .moderatelyActive
     
-    // Temporary UI State for Imperial Height
-    @State private var heightFt: Int? = nil
-    @State private var heightIn: Int? = nil
+    // Height Logic
+    @State private var heightUnit: UnitSystem = .metric // Independent toggle
+    @State private var currentHeight: Double? = nil // Master source (cm)
+    @State private var heightFt: Int? = nil // Temporary input
+    @State private var heightIn: Int? = nil // Temporary input
+    
+    // Age Logic
+    @State private var dateOfBirth: Date = Calendar.current.date(byAdding: .year, value: -25, to: Date())!
+    
+    @State private var activityLevel: ActivityLevel = .moderatelyActive
     
     @State private var targetWeight: Double? = nil
     @State private var goalType: GoalType = .cutting
@@ -42,6 +46,10 @@ struct OnboardingView: View {
     // MARK: - Helpers
     private var dataManager: DataManager {
         DataManager(modelContext: modelContext)
+    }
+    
+    private var computedAge: Int {
+        Calendar.current.dateComponents([.year], from: dateOfBirth, to: Date()).year ?? 25
     }
 
     var unitLabel: String {
@@ -154,11 +162,14 @@ struct OnboardingView: View {
     // MARK: - Validation
     var cannotMoveForward: Bool {
         if currentStep == 1 {
-            // Must have weight, age
-            if currentWeight == nil || currentAge == nil { return true }
-            // Must have height (either direct cm or ft/in)
-            if unitSystem == .metric && currentHeight == nil { return true }
-            if unitSystem == .imperial && (heightFt == nil || heightIn == nil) { return true }
+            // Must have weight
+            if currentWeight == nil { return true }
+            // Must have height (either direct cm or ft/in depending on mode)
+            // Logic: if currentHeight is nil, we check if the user entered ft/in validly
+            if currentHeight == nil {
+                if heightUnit == .metric { return true }
+                if heightUnit == .imperial && (heightFt == nil || heightIn == nil) { return true }
+            }
             return false
         }
         if currentStep == 2 {
@@ -197,7 +208,14 @@ struct OnboardingView: View {
                 // Units
                 HStack(spacing: 0) {
                     ForEach(UnitSystem.allCases, id: \.self) { system in
-                        Button(action: { withAnimation { unitSystem = system } }) {
+                        Button(action: {
+                            withAnimation {
+                                unitSystem = system
+                                // Sync height unit only if it hasn't been explicitly toggled?
+                                // Or just let them default together but change separately.
+                                // Let's keep height unit separate as requested.
+                            }
+                        }) {
                             Text(system.rawValue)
                                 .font(.subheadline).fontWeight(.medium)
                                 .frame(maxWidth: .infinity)
@@ -223,21 +241,47 @@ struct OnboardingView: View {
                 // Grid for Inputs
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                     
-                    // Age
+                    // Age (Date of Birth)
                     VStack(alignment: .leading) {
-                        Text("Age").font(.caption).foregroundColor(.secondary)
-                        TextField("Age", value: $currentAge, format: .number)
-                            .keyboardType(.numberPad)
-                            .padding()
+                        Text("Date of Birth").font(.caption).foregroundColor(.secondary)
+                        DatePicker("", selection: $dateOfBirth, displayedComponents: .date)
+                            .labelsHidden()
+                            .datePickerStyle(.compact)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal)
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(12)
-                            .focused($isInputFocused)
                     }
                     
                     // Height
                     VStack(alignment: .leading) {
-                        Text("Height").font(.caption).foregroundColor(.secondary)
-                        if unitSystem == .metric {
+                        HStack {
+                            Text("Height").font(.caption).foregroundColor(.secondary)
+                            Spacer()
+                            // Independent Toggle
+                            Picker("Height Unit", selection: $heightUnit) {
+                                Text("cm").tag(UnitSystem.metric)
+                                Text("ft/in").tag(UnitSystem.imperial)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 80)
+                            .scaleEffect(0.8)
+                            .onChange(of: heightUnit) { oldVal, newVal in
+                                // Drift Prevention: Only convert display values when entering the mode.
+                                if newVal == .imperial {
+                                    if let cm = currentHeight {
+                                        let totalInches = cm / 2.54
+                                        heightFt = Int(totalInches / 12)
+                                        heightIn = Int(totalInches.truncatingRemainder(dividingBy: 12))
+                                    }
+                                }
+                                // When switching back to metric, we DO NOT auto-update 'currentHeight' from ft/in
+                                // unless the user edited them. This keeps '180' as '180' even if 5'11" is slightly off.
+                            }
+                        }
+                        
+                        if heightUnit == .metric {
                             HStack {
                                 TextField("cm", value: $currentHeight, format: .number)
                                     .keyboardType(.numberPad)
@@ -251,9 +295,11 @@ struct OnboardingView: View {
                             HStack {
                                 TextField("ft", value: $heightFt, format: .number)
                                     .keyboardType(.numberPad)
+                                    .onChange(of: heightFt) { _, _ in updateHeightFromImperial() }
                                 Text("'")
                                 TextField("in", value: $heightIn, format: .number)
                                     .keyboardType(.numberPad)
+                                    .onChange(of: heightIn) { _, _ in updateHeightFromImperial() }
                                 Text("\"")
                             }
                             .padding()
@@ -307,7 +353,7 @@ struct OnboardingView: View {
         .scrollDismissesKeyboard(.interactively)
     }
     
-    // MARK: - Step 2: Goals (Unchanged visual logic, just truncated for brevity)
+    // MARK: - Step 2, 3, 4 (Standard)
     var goalsStep: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -323,7 +369,6 @@ struct OnboardingView: View {
                 Divider().padding(.horizontal)
                 
                 if goalType == .maintenance {
-                    // Maintenance Tolerance Input
                     VStack(spacing: 10) {
                         Text("Maintenance Tolerance (+/-)").font(.headline).foregroundColor(.secondary)
                         HStack(alignment: .firstTextBaseline) {
@@ -339,7 +384,6 @@ struct OnboardingView: View {
                         .padding().background(RoundedRectangle(cornerRadius: 16).fill(Color.gray.opacity(0.1)))
                     }
                 } else {
-                    // Target Weight Input
                     VStack(spacing: 10) {
                         Text("Target Weight").font(.headline).foregroundColor(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -351,7 +395,6 @@ struct OnboardingView: View {
                         }
                         .padding().background(RoundedRectangle(cornerRadius: 20).fill(Color.gray.opacity(0.1)))
                         
-                        // Validation Warnings
                         if let t = targetWeight, let c = currentWeight {
                             if goalType == .cutting && t >= c {
                                 Label("Target must be lower than current", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundColor(.red)
@@ -368,7 +411,6 @@ struct OnboardingView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    // MARK: - Step 3: Strategy (UI mostly unchanged)
     var strategyStep: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -452,7 +494,6 @@ struct OnboardingView: View {
         .scrollDismissesKeyboard(.interactively)
     }
     
-    // MARK: - Step 4: Final (UI Unchanged)
     var finalStep: some View {
         VStack(spacing: 30) {
             Spacer()
@@ -527,28 +568,29 @@ struct OnboardingView: View {
     
     // MARK: - Logic
     
-    // Helper to consolidate height inputs
+    func updateHeightFromImperial() {
+        if let ft = heightFt, let inches = heightIn {
+            let totalInches = (Double(ft) * 12.0) + Double(inches)
+            currentHeight = totalInches * 2.54
+        }
+    }
+    
+    // Final check to ensure consistency if they typed in Imperial but didn't trigger an update (rare) or just to be safe
     func resolveHeight() {
-        if unitSystem == .imperial {
-            if let ft = heightFt, let inches = heightIn {
-                let totalInches = (Double(ft) * 12.0) + Double(inches)
-                currentHeight = totalInches * 2.54 // Convert to cm for storage/calc
-            }
+        if heightUnit == .imperial {
+            updateHeightFromImperial()
         }
     }
     
     func estimateMaintenance() {
         guard let cWeight = currentWeight,
-              let cHeight = currentHeight,
-              let cAge = currentAge else { return }
+              let cHeight = currentHeight else { return }
               
         let weightKg = toKg(cWeight)
         
         // Mifflin-St Jeor Equation
         // Men: (10 × weight in kg) + (6.25 × height in cm) - (5 × age in years) + 5
-        // Women: (10 × weight in kg) + (6.25 × height in cm) - (5 × age in years) - 161
-        
-        let base: Double = (10 * weightKg) + (6.25 * cHeight) - (5 * Double(cAge))
+        let base: Double = (10 * weightKg) + (6.25 * cHeight) - (5 * Double(computedAge))
         let genderOffset: Double = (gender == .male) ? 5 : -161
         let bmr = base + genderOffset
         
@@ -608,11 +650,12 @@ struct OnboardingView: View {
         // 3. Create and Save UserProfile
         let profile = UserProfile()
         profile.unitSystem = unitSystem.rawValue
+        profile.heightUnitPreference = heightUnit.rawValue // Save height preference
         profile.isDarkMode = isDarkMode
         profile.gender = gender.rawValue
         
         // New Fields
-        profile.age = currentAge ?? 30
+        profile.dateOfBirth = dateOfBirth
         profile.height = storedHeight
         profile.activityLevel = activityLevel.rawValue
         
